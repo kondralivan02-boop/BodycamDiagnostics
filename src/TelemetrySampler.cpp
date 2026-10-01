@@ -235,6 +235,7 @@ bool TelemetrySampler::start(
         << "timestamp,pid,"
         << "process_cpu_pct,system_cpu_pct,"
         << "working_set_mib,private_usage_mib,"
+        << "process_read_mib_s,process_write_mib_s,"
         << "system_memory_load_pct,system_memory_available_mib,"
         << "gpu_util_pct,gpu_mem_util_pct,"
         << "vram_used_mib,vram_total_mib,"
@@ -305,6 +306,11 @@ void TelemetrySampler::worker() {
     unsigned long long prevSysIdle = ftToU64(sysIdle);
     unsigned long long prevSysKernel = ftToU64(sysKernel);
     unsigned long long prevSysUser = ftToU64(sysUser);
+
+    IO_COUNTERS previousIo{};
+    bool havePreviousIo =
+        GetProcessIoCounters(process_, &previousIo) != FALSE;
+    auto previousIoSampleAt = std::chrono::steady_clock::now();
 
     NvmlReader nvml;
     const bool nvmlReady = nvml.open();
@@ -410,6 +416,45 @@ void TelemetrySampler::worker() {
                 (1024.0 * 1024.0);
         }
 
+        double processReadMiBps = 0.0;
+        double processWriteMiBps = 0.0;
+
+        IO_COUNTERS currentIo{};
+        const auto ioSampleAt = std::chrono::steady_clock::now();
+
+        if (GetProcessIoCounters(process_, &currentIo)) {
+            const double elapsedSeconds =
+                std::chrono::duration<double>(
+                    ioSampleAt - previousIoSampleAt).count();
+
+            if (havePreviousIo && elapsedSeconds >= 0.05) {
+                const auto readDelta =
+                    currentIo.ReadTransferCount >= previousIo.ReadTransferCount
+                        ? currentIo.ReadTransferCount - previousIo.ReadTransferCount
+                        : 0;
+
+                const auto writeDelta =
+                    currentIo.WriteTransferCount >= previousIo.WriteTransferCount
+                        ? currentIo.WriteTransferCount - previousIo.WriteTransferCount
+                        : 0;
+
+                processReadMiBps =
+                    static_cast<double>(readDelta) /
+                    (1024.0 * 1024.0) /
+                    elapsedSeconds;
+
+                processWriteMiBps =
+                    static_cast<double>(writeDelta) /
+                    (1024.0 * 1024.0) /
+                    elapsedSeconds;
+            }
+
+            previousIo = currentIo;
+            havePreviousIo = true;
+        }
+
+        previousIoSampleAt = ioSampleAt;
+
         MEMORYSTATUSEX memory{};
         memory.dwLength = sizeof(memory);
 
@@ -459,6 +504,8 @@ void TelemetrySampler::worker() {
             latest_.systemCpuPct = systemCpu;
             latest_.workingSetMiB = workingSetMiB;
             latest_.privateUsageMiB = privateUsageMiB;
+            latest_.processReadMiBps = processReadMiBps;
+            latest_.processWriteMiBps = processWriteMiBps;
             latest_.systemMemoryLoadPct = memoryLoadPct;
             latest_.systemMemoryAvailableMiB = memoryAvailableMiB;
             latest_.gpuUtilPct = gpuUtil;
@@ -481,6 +528,8 @@ void TelemetrySampler::worker() {
             << std::setprecision(1)
             << workingSetMiB << ','
             << privateUsageMiB << ','
+            << processReadMiBps << ','
+            << processWriteMiBps << ','
             << memoryLoadPct << ','
             << memoryAvailableMiB << ',';
 
