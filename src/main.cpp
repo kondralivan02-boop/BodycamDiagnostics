@@ -730,6 +730,13 @@ void updateLiveOverlay() {
     if (!gRunning)
         return;
 
+    if (gRecorder) {
+        std::wstring recorderEvent;
+        gRecorder->maintain(&recorderEvent);
+        if (!recorderEvent.empty())
+            logEvent(recorderEvent);
+    }
+
     gLiveFrames.poll();
 
     const LiveFrameSnapshot frame = gLiveFrames.snapshot();
