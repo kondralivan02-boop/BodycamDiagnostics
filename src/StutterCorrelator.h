@@ -26,6 +26,17 @@ struct StutterTelemetryPoint {
     double gpuPowerLimitW = 0.0;
 };
 
+struct StutterTelemetryDelta {
+    bool valid = false;
+    double processCpuPct = 0.0;
+    double systemCpuPct = 0.0;
+    double processReadMiBps = 0.0;
+    double processWriteMiBps = 0.0;
+    double gpuUtilPct = 0.0;
+    double gpuGraphicsMHz = 0.0;
+    double gpuPowerW = 0.0;
+};
+
 struct StutterEvent {
     std::string timestamp;
     double frameTimeMs = 0.0;
@@ -58,6 +69,9 @@ struct StutterEvent {
     StutterTelemetryPoint before;
     StutterTelemetryPoint nearest;
     StutterTelemetryPoint after;
+    StutterTelemetryDelta beforeToNearest;
+    StutterTelemetryDelta nearestToAfter;
+    StutterTelemetryDelta beforeToAfter;
     std::vector<std::string> signals;
 };
 
