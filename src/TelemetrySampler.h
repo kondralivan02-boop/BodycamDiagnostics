@@ -10,7 +10,11 @@ struct TelemetrySnapshot {
     bool valid = false;
     bool gpuValid = false;
     double processCpuPct = 0.0;
+    double systemCpuPct = 0.0;
     double workingSetMiB = 0.0;
+    double privateUsageMiB = 0.0;
+    double systemMemoryLoadPct = 0.0;
+    double systemMemoryAvailableMiB = 0.0;
     unsigned gpuUtilPct = 0;
     unsigned gpuMemoryUtilPct = 0;
     unsigned long long vramUsedMiB = 0;
@@ -18,6 +22,8 @@ struct TelemetrySnapshot {
     unsigned gpuTempC = 0;
     unsigned gpuGraphicsMHz = 0;
     unsigned gpuMemoryMHz = 0;
+    double gpuPowerW = 0.0;
+    double gpuPowerLimitW = 0.0;
 };
 
 class TelemetrySampler {
