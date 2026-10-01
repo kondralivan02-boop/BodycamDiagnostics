@@ -305,12 +305,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                       20, 155, 650, 58, hwnd, reinterpret_cast<HMENU>(ID_STATUS), nullptr, nullptr);
 
         CreateWindowW(L"STATIC",
-                      L"F9 Start • F10 Stop • PresentMon + telemetry + NVENC + automatic report ZIP",
+                      L"Ctrl+Shift+F9 Start • Ctrl+Shift+F10 Stop • PresentMon + telemetry + NVENC + automatic report ZIP",
                       WS_CHILD | WS_VISIBLE,
                       20, 235, 650, 28, hwnd, nullptr, nullptr, nullptr);
 
-        RegisterHotKey(hwnd, HOTKEY_START, MOD_NOREPEAT, VK_F9);
-        RegisterHotKey(hwnd, HOTKEY_STOP, MOD_NOREPEAT, VK_F10);
+        RegisterHotKey(hwnd, HOTKEY_START, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_F9);
+        RegisterHotKey(hwnd, HOTKEY_STOP, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_F10);
         SetTimer(hwnd, ID_TIMER, 1500, nullptr);
         return 0;
 
@@ -328,8 +328,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_HOTKEY:
-        if (wp == HOTKEY_START) { startSession(); return 0; }
-        if (wp == HOTKEY_STOP) { stopSession(); return 0; }
+        if (wp == HOTKEY_START) {
+            if (gSession) gSession->log(L"Hotkey received: Ctrl+Shift+F9");
+            startSession();
+            return 0;
+        }
+        if (wp == HOTKEY_STOP) {
+            if (gSession) gSession->log(L"Hotkey received: Ctrl+Shift+F10");
+            stopSession();
+            return 0;
+        }
         break;
 
     case WM_DESTROY:
