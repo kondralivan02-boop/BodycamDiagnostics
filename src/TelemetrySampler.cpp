@@ -143,6 +143,11 @@ TelemetrySampler::~TelemetrySampler() {
     stop();
 }
 
+TelemetrySnapshot TelemetrySampler::latest() const {
+    std::scoped_lock lock(snapshotMutex_);
+    return latest_;
+}
+
 bool TelemetrySampler::start(DWORD targetPid, const std::filesystem::path& csvOutput, std::wstring* error) {
     if (running()) return true;
 
@@ -239,6 +244,21 @@ void TelemetrySampler::worker() {
         unsigned gpuUtil = 0, gpuMemUtil = 0, tempC = 0, gfxMHz = 0, memMHz = 0;
         unsigned long long vramUsed = 0, vramTotal = 0;
         const bool gpuOk = nvmlReady && nvml.sample(gpuUtil, gpuMemUtil, vramUsed, vramTotal, tempC, gfxMHz, memMHz);
+
+        {
+            std::scoped_lock lock(snapshotMutex_);
+            latest_.valid = true;
+            latest_.gpuValid = gpuOk;
+            latest_.processCpuPct = processCpu;
+            latest_.workingSetMiB = workingSetMiB;
+            latest_.gpuUtilPct = gpuUtil;
+            latest_.gpuMemoryUtilPct = gpuMemUtil;
+            latest_.vramUsedMiB = vramUsed;
+            latest_.vramTotalMiB = vramTotal;
+            latest_.gpuTempC = tempC;
+            latest_.gpuGraphicsMHz = gfxMHz;
+            latest_.gpuMemoryMHz = memMHz;
+        }
 
         out << isoTimestampLocal() << ',' << targetPid_ << ','
             << std::fixed << std::setprecision(2) << processCpu << ','
