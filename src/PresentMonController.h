@@ -14,7 +14,10 @@ public:
     bool running() const noexcept { return process_ != nullptr; }
 
 private:
-    bool launch(const std::wstring& arguments, HANDLE* processOut, std::wstring* error);
+    bool launch(const std::wstring& arguments,
+                HANDLE* processOut,
+                std::wstring* error,
+                HANDLE stdOut = nullptr);
     std::filesystem::path executable_;
     HANDLE process_ = nullptr;
     static constexpr const wchar_t* kSessionName = L"BodycamDiagnostics";
