@@ -1,5 +1,7 @@
 #include "LiveFrameMetrics.h"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -95,6 +97,39 @@ double recentAverageFps(const std::vector<double>& values, std::size_t frameCoun
         : 0.0;
 }
 
+std::string utf16LeBytesToUtf8(const std::string& bytes) {
+    if (bytes.empty())
+        return {};
+
+    const std::size_t charCount = bytes.size() / 2;
+    std::wstring wide;
+    wide.resize(charCount);
+
+    for (std::size_t i = 0; i < charCount; ++i) {
+        const auto lo = static_cast<unsigned char>(bytes[i * 2]);
+        const auto hi = static_cast<unsigned char>(bytes[i * 2 + 1]);
+        wide[i] = static_cast<wchar_t>(
+            static_cast<unsigned>(lo) |
+            (static_cast<unsigned>(hi) << 8));
+    }
+
+    const int required = WideCharToMultiByte(
+        CP_UTF8, 0,
+        wide.data(), static_cast<int>(wide.size()),
+        nullptr, 0, nullptr, nullptr);
+
+    if (required <= 0)
+        return {};
+
+    std::string out(static_cast<std::size_t>(required), '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0,
+        wide.data(), static_cast<int>(wide.size()),
+        out.data(), required, nullptr, nullptr);
+
+    return out;
+}
+
 double recentAverageFrameTime(const std::vector<double>& values, std::size_t frameCount) {
     if (values.empty()) return 0.0;
 
@@ -109,7 +144,9 @@ double recentAverageFrameTime(const std::vector<double>& values, std::size_t fra
 void LiveFrameMetrics::reset(const std::filesystem::path& csvPath) {
     csvPath_ = csvPath;
     offset_ = 0;
+    rawPending_.clear();
     pending_.clear();
+    encoding_ = TextEncoding::Unknown;
     headerReady_ = false;
     frameTimeIndex_ = static_cast<std::size_t>(-1);
     frameTimesMs_.clear();
@@ -193,7 +230,39 @@ bool LiveFrameMetrics::poll() {
     offset_ += chunk.size();
     if (chunk.empty()) return true;
 
-    pending_ += chunk;
+    rawPending_ += chunk;
+
+    if (encoding_ == TextEncoding::Unknown) {
+        if (rawPending_.size() >= 2 &&
+            static_cast<unsigned char>(rawPending_[0]) == 0xFF &&
+            static_cast<unsigned char>(rawPending_[1]) == 0xFE) {
+            encoding_ = TextEncoding::Utf16Le;
+            rawPending_.erase(0, 2);
+        } else if (rawPending_.size() >= 3) {
+            encoding_ = TextEncoding::Utf8;
+            if (static_cast<unsigned char>(rawPending_[0]) == 0xEF &&
+                static_cast<unsigned char>(rawPending_[1]) == 0xBB &&
+                static_cast<unsigned char>(rawPending_[2]) == 0xBF) {
+                rawPending_.erase(0, 3);
+            }
+        } else {
+            return true;
+        }
+    }
+
+    if (encoding_ == TextEncoding::Utf16Le) {
+        const std::size_t evenBytes =
+            rawPending_.size() - (rawPending_.size() % 2);
+
+        if (evenBytes > 0) {
+            pending_ += utf16LeBytesToUtf8(
+                rawPending_.substr(0, evenBytes));
+            rawPending_.erase(0, evenBytes);
+        }
+    } else {
+        pending_ += rawPending_;
+        rawPending_.clear();
+    }
 
     std::size_t start = 0;
     while (true) {
