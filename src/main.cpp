@@ -24,6 +24,7 @@
 #include "RecorderController.h"
 #include "ReportPackager.h"
 #include "SessionManager.h"
+#include "SessionDiagnostics.h"
 #include "SessionMirror.h"
 #include "SystemSnapshot.h"
 #include "StutterCorrelator.h"
@@ -494,6 +495,30 @@ void stopSession() {
         }
     } else {
         logEvent(L"Ошибка validation report  •  " + validationError);
+    }
+
+    const auto sessionDiagnostics = analyzeSessionDiagnostics(
+        summary,
+        validation,
+        performanceHealth,
+        stutterCorrelation);
+
+    std::wstring sessionDiagnosticsError;
+    if (writeSessionDiagnosticsReport(
+            sessionDiagnostics,
+            sessionPath / L"session_diagnostics.json",
+            sessionPath / L"session_diagnostics.txt",
+            &sessionDiagnosticsError)) {
+        logEvent(
+            L"Session diagnostics  •  " +
+            std::to_wstring(sessionDiagnostics.correlatedStutters) +
+            L" stutter(s)  •  " +
+            std::to_wstring(sessionDiagnostics.signalCounts.size()) +
+            L" signal type(s)");
+    } else {
+        logEvent(
+            L"Ошибка session diagnostics report  •  " +
+            sessionDiagnosticsError);
     }
 
     gSession->stop();
