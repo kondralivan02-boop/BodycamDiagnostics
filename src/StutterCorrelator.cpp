@@ -437,6 +437,59 @@ const TelemetryRow* nearestTelemetry(
     return best;
 }
 
+
+void classifySignals(StutterEvent& event) {
+    const double frame = event.frameTimeMs;
+
+    if (event.cpuBusyMs >= 100.0 &&
+        event.cpuBusyMs >= frame * 0.50) {
+        event.signals.push_back("CPU_BUSY_DOMINANT");
+    }
+
+    if (event.cpuWaitMs >= 100.0 &&
+        event.cpuWaitMs >= frame * 0.25) {
+        event.signals.push_back("CPU_WAIT_HIGH");
+    }
+
+    if (event.gpuBusyMs >= 100.0 &&
+        event.gpuBusyMs >= frame * 0.25) {
+        event.signals.push_back("GPU_BUSY_HIGH");
+    }
+
+    if (event.gpuWaitMs >= 100.0 &&
+        event.gpuWaitMs >= frame * 0.25) {
+        event.signals.push_back("GPU_WAIT_HIGH");
+    }
+
+    if (!event.telemetryMatched)
+        return;
+
+    if (frame >= 250.0 &&
+        event.gpuUtilPct <= 15.0) {
+        event.signals.push_back("GPU_UTIL_LOW_NEAR_STALL");
+    }
+
+    if (event.systemCpuPct >= 90.0) {
+        event.signals.push_back("SYSTEM_CPU_HIGH");
+    }
+
+    if (event.systemMemoryLoadPct >= 90.0 ||
+        (event.systemMemoryAvailableMiB > 0.0 &&
+         event.systemMemoryAvailableMiB <= 2048.0)) {
+        event.signals.push_back("SYSTEM_MEMORY_PRESSURE");
+    }
+
+    if (event.vramTotalMiB > 0.0 &&
+        event.vramUsedMiB / event.vramTotalMiB >= 0.95) {
+        event.signals.push_back("VRAM_PRESSURE");
+    }
+
+    if (event.gpuPowerLimitW > 0.0 &&
+        event.gpuPowerW / event.gpuPowerLimitW >= 0.95) {
+        event.signals.push_back("GPU_POWER_NEAR_LIMIT");
+    }
+}
+
 void copyTelemetry(
     StutterEvent& event,
     const TelemetryRow& row,
@@ -572,6 +625,8 @@ StutterCorrelationResult correlateStutterEvents(
                     telemetryDeltaMs);
             }
         }
+
+        classifySignals(event);
 
         result.events.push_back(std::move(event));
     }
