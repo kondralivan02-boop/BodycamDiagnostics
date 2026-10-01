@@ -505,20 +505,14 @@ void paintMainWindow(HWND hwnd) {
 
     SelectObject(dc, gTitleFont);
     SetTextColor(dc, COLOR_TEXT);
-    RECT titleRect{20, 12, 612, 44};
+    RECT titleRect{20, 10, 600, 42};
     DrawTextW(dc, L"Bodycam Diagnostics", -1, &titleRect,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-    SelectObject(dc, gSubtitleFont);
-    SetTextColor(dc, COLOR_MUTED);
-    RECT subtitleRect{22, 42, 612, 64};
-    DrawTextW(dc, L"DLSS  /  FRAME GENERATION  /  TELEMETRY", -1, &subtitleRect,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    RECT presetLabel{20, 73, 612, 92};
-    DrawTextW(dc, L"ПРЕСЕТ ТЕСТА", -1, &presetLabel,
+    RECT presetLabel{20, 52, 600, 72};
+    DrawTextW(dc, L"ПРЕСЕТ", -1, &presetLabel,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     HBRUSH panel = CreateSolidBrush(COLOR_PANEL);
@@ -527,8 +521,8 @@ void paintMainWindow(HWND hwnd) {
     auto oldBrush = SelectObject(dc, panel);
     auto oldPen = SelectObject(dc, border);
 
-    RoundRect(dc, 20, 123, 612, 169, 12, 12);
-    RoundRect(dc, 20, 252, 612, 366, 12, 12);
+    RoundRect(dc, 20, 105, 600, 147, 10, 10);
+    RoundRect(dc, 20, 224, 600, 326, 10, 10);
 
     SelectObject(dc, oldPen);
     SelectObject(dc, oldBrush);
@@ -536,23 +530,15 @@ void paintMainWindow(HWND hwnd) {
     DeleteObject(panel);
 
     HBRUSH dot = CreateSolidBrush(gRunning ? COLOR_OK : COLOR_ACCENT);
-    RECT dotRect{34, 141, 42, 149};
+    RECT dotRect{34, 122, 42, 130};
     FillRect(dc, &dotRect, dot);
     DeleteObject(dot);
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    RECT logLabel{20, 227, 612, 246};
+    RECT logLabel{20, 202, 600, 220};
     DrawTextW(dc, L"ЖУРНАЛ", -1, &logLabel,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-    SelectObject(dc, gSmallFont);
-    SetTextColor(dc, COLOR_MUTED);
-    RECT footerRect{20, 374, 612, 401};
-    DrawTextW(dc,
-              L"F9 — старт / стоп   •   HUD   •   PresentMon   •   NVENC   •   game audio",
-              -1, &footerRect,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
     EndPaint(hwnd, &ps);
 }
@@ -661,7 +647,7 @@ void createControls(HWND hwnd) {
         0, L"COMBOBOX", nullptr,
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
-        20, 96, 592, 220,
+        20, 72, 580, 220,
         hwnd, reinterpret_cast<HMENU>(ID_PRESET), nullptr, nullptr);
 
     SendMessageW(gPreset, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
@@ -682,33 +668,33 @@ void createControls(HWND hwnd) {
     gStatus = CreateWindowExW(
         0, L"STATIC", L"Ожидание Bodycam...",
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
-        52, 132, 540, 28,
+        52, 111, 528, 30,
         hwnd, reinterpret_cast<HMENU>(ID_STATUS), nullptr, nullptr);
     SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
 
     gToggle = CreateWindowW(
         L"BUTTON", L"Начать тест",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        20, 182, 184, 38,
+        20, 159, 180, 38,
         hwnd, reinterpret_cast<HMENU>(ID_TOGGLE), nullptr, nullptr);
 
     gOpenSession = CreateWindowW(
         L"BUTTON", L"Открыть сессию",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        216, 182, 184, 38,
+        210, 159, 180, 38,
         hwnd, reinterpret_cast<HMENU>(ID_OPEN_SESSION), nullptr, nullptr);
 
     gCopyReport = CreateWindowW(
         L"BUTTON", L"Копировать ZIP",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        412, 182, 200, 38,
+        400, 159, 200, 38,
         hwnd, reinterpret_cast<HMENU>(ID_COPY_REPORT), nullptr, nullptr);
 
     gLog = CreateWindowExW(
         0, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-        32, 263, 568, 92,
+        32, 234, 556, 82,
         hwnd, reinterpret_cast<HMENU>(ID_LOG), nullptr, nullptr);
 
     SendMessageW(gLog, WM_SETFONT, reinterpret_cast<WPARAM>(gSmallFont), TRUE);
@@ -909,7 +895,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
         L"Bodycam Diagnostics",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        650, 440,
+        628, 382,
         nullptr, nullptr,
         hInstance, nullptr);
 
