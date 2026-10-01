@@ -70,7 +70,8 @@ bool runCommand(const std::wstring& command,
 bool packageSessionReport(const std::filesystem::path& sessionDirectory,
                           const std::filesystem::path& outputZip,
                           std::wstring* error) {
-    static constexpr std::array<const wchar_t*, 17> kReportFiles = {
+    static constexpr std::array<const wchar_t*, 18> kReportFiles = {
+        L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
         L"windows_events.json",
         L"session.log",
@@ -109,6 +110,10 @@ bool packageSessionReport(const std::filesystem::path& sessionDirectory,
             crashEc)) {
         existing.emplace_back(L"crash_diagnostics");
     }
+
+    ec.clear();
+    if (std::filesystem::is_directory(sessionDirectory / L"bodycam_logs", ec))
+        existing.emplace_back(L"bodycam_logs");
 
     if (existing.empty()) {
         if (error) *error = L"No report files are available to package";

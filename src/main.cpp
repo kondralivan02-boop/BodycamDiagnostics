@@ -15,6 +15,7 @@
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
 #include "CrashCollector.h"
+#include "BodycamLogs.h"
 #include "EnvironmentDiagnostics.h"
 #include "DiagnosticsOverlay.h"
 #include "FullscreenOverlayBridge.h"
@@ -525,8 +526,15 @@ void stopSession() {
         logEvent(L"Ошибка validation report  •  " + validationError);
     }
 
-    if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, sessionPath / L"environment_capabilities.json"))
-        logEvent(L"Cannot update environment capabilities profile");
+    wchar_t localAppData[32768]{};
+    const DWORD localAppDataSize = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(std::size(localAppData)));
+    const std::filesystem::path bodycamLogRoot = localAppDataSize > 0 && localAppDataSize < std::size(localAppData)
+        ? std::filesystem::path(localAppData) / L"Bodycam" / L"Saved" / L"Logs" : std::filesystem::path{};
+    const auto bodycamLogs = collectBodycamLogs(bodycamLogRoot, sessionPath, gSessionStartedWallClock);
+    const bool bodycamManifestWritten = writeBodycamLogsManifest(bodycamLogs, sessionPath / L"bodycam_logs_manifest.json");
+    gEnvironmentCapabilities.sources.push_back(bodycamLogs.source);
+    logEvent(bodycamManifestWritten ? L"Optional Bodycam log manifest saved" : L"Cannot save optional Bodycam log manifest");
+
     const auto windowsEvents = collectWindowsEvents(gSessionStartedWallClock, observationEnd);
     const bool eventReportWritten = writeWindowsEventReport(
         windowsEvents, stutterCorrelation, gPresentMonStartedWallClock,
@@ -534,12 +542,21 @@ void stopSession() {
         sessionPath / L"windows_events.json");
     logEvent(eventReportWritten ? L"Windows Event Log report saved (optional evidence)" : L"Cannot save Windows Event Log report");
 
+    for (const auto& source : windowsEvents.channels) {
+        for (auto& observed : gEnvironmentCapabilities.sources)
+            if (observed.source == source.source) observed = source;
+    }
+    if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, sessionPath / L"environment_capabilities.json"))
+        logEvent(L"Cannot update environment capabilities profile");
+
     auto sessionDiagnostics = analyzeSessionDiagnostics(
         summary,
         validation,
         performanceHealth,
         stutterCorrelation);
 
+    if (!bodycamManifestWritten || (bodycamLogs.source.status != "available" && bodycamLogs.source.status != "available_empty"))
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Bodycam logs: " + std::wstring(bodycamLogs.source.status.begin(), bodycamLogs.source.status.end()) + (bodycamManifestWritten ? L"" : L"; manifest write failed"));
     sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
     if (!eventReportWritten)
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Windows Event Log report could not be written");

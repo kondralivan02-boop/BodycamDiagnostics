@@ -57,6 +57,7 @@ void SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
 
 void SessionMirror::syncOnce(bool finalPass) {
     static constexpr const wchar_t* kLightweightFiles[] = {
+        L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
         L"windows_events.json",
         L"session_diagnostics.json",

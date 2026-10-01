@@ -26,6 +26,7 @@ add_executable(BodycamDiagnostics WIN32
     src/CrashCollector.cpp
     src/PerformanceHealth.cpp
     src/StutterCorrelator.cpp
+    src/BodycamLogs.cpp
     src/EnvironmentDiagnostics.cpp
     src/DiagnosticEvidence.cpp
     src/SessionDiagnostics.cpp
@@ -58,6 +59,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(BodycamLogsTests tests/BodycamLogsTests.cpp src/BodycamLogs.cpp src/DiagnosticEvidence.cpp)
+    target_include_directories(BodycamLogsTests PRIVATE src)
+    target_compile_definitions(BodycamLogsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME BodycamLogsTests COMMAND BodycamLogsTests)
     add_executable(DiagnosticEvidenceTests tests/DiagnosticEvidenceTests.cpp src/DiagnosticEvidence.cpp)
     target_include_directories(DiagnosticEvidenceTests PRIVATE src)
     add_test(NAME DiagnosticEvidenceTests COMMAND DiagnosticEvidenceTests)
@@ -67,6 +72,7 @@ if(BUILD_TESTING)
     target_link_libraries(WindowsDiagnosticsTests PRIVATE wevtapi)
     add_test(NAME WindowsDiagnosticsTests COMMAND WindowsDiagnosticsTests)
     if(MSVC)
+        target_compile_options(BodycamLogsTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(DiagnosticEvidenceTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(WindowsDiagnosticsTests PRIVATE /utf-8 /W4 /WX)
     endif()
