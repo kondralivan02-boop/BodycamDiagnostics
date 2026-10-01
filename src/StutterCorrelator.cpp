@@ -523,6 +523,77 @@ void copyTelemetry(
     event.gpuPowerW = row.gpuPowerW;
     event.gpuPowerLimitW = row.gpuPowerLimitW;
 }
+
+StutterTelemetryPoint makeTelemetryPoint(
+    const TelemetryRow& row,
+    unsigned long long targetTime100ns) {
+
+    StutterTelemetryPoint point{};
+    point.valid = true;
+
+    const long long signedDelta =
+        row.time100ns >= targetTime100ns
+            ? static_cast<long long>(row.time100ns - targetTime100ns)
+            : -static_cast<long long>(targetTime100ns - row.time100ns);
+
+    point.offsetMs =
+        static_cast<double>(signedDelta) / 10000.0;
+    point.processCpuPct = row.processCpuPct;
+    point.systemCpuPct = row.systemCpuPct;
+    point.workingSetMiB = row.workingSetMiB;
+    point.privateUsageMiB = row.privateUsageMiB;
+    point.processReadMiBps = row.processReadMiBps;
+    point.processWriteMiBps = row.processWriteMiBps;
+    point.systemMemoryLoadPct = row.systemMemoryLoadPct;
+    point.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
+    point.gpuUtilPct = row.gpuUtilPct;
+    point.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
+    point.vramUsedMiB = row.vramUsedMiB;
+    point.vramTotalMiB = row.vramTotalMiB;
+    point.gpuTempC = row.gpuTempC;
+    point.gpuGraphicsMHz = row.gpuGraphicsMHz;
+    point.gpuMemoryMHz = row.gpuMemoryMHz;
+    point.gpuPowerW = row.gpuPowerW;
+    point.gpuPowerLimitW = row.gpuPowerLimitW;
+    return point;
+}
+
+void attachTelemetryWindow(
+    StutterEvent& event,
+    const std::vector<TelemetryRow>& rows,
+    unsigned long long targetTime100ns) {
+
+    if (rows.empty())
+        return;
+
+    const auto it =
+        std::lower_bound(
+            rows.begin(),
+            rows.end(),
+            targetTime100ns,
+            [](const TelemetryRow& row, unsigned long long value) {
+                return row.time100ns < value;
+            });
+
+    if (it != rows.begin()) {
+        const auto& row = *std::prev(it);
+        event.before = makeTelemetryPoint(row, targetTime100ns);
+    }
+
+    if (it != rows.end()) {
+        event.after = makeTelemetryPoint(*it, targetTime100ns);
+    }
+
+    double nearestDeltaMs = 0.0;
+    if (const auto* row =
+            nearestTelemetry(rows, targetTime100ns, nearestDeltaMs)) {
+        if (nearestDeltaMs <= 1500.0) {
+            event.nearest = makeTelemetryPoint(*row, targetTime100ns);
+            copyTelemetry(event, *row, nearestDeltaMs);
+        }
+    }
+}
+
 }
 
 StutterCorrelationResult correlateStutterEvents(
@@ -627,7 +698,6 @@ StutterCorrelationResult correlateStutterEvents(
         if (presentModeIndex < fields.size())
             event.presentMode = fields[presentModeIndex];
 
-        double telemetryDeltaMs = 0.0;
         unsigned long long telemetryTargetTime100ns =
             eventTime100ns;
 
@@ -639,19 +709,10 @@ StutterCorrelationResult correlateStutterEvents(
                 (eventTime100ns - presentMonBaseTime100ns);
         }
 
-        if (const auto* nearest =
-                nearestTelemetry(
-                    telemetryRows,
-                    telemetryTargetTime100ns,
-                    telemetryDeltaMs)) {
-
-            if (telemetryDeltaMs <= 1500.0) {
-                copyTelemetry(
-                    event,
-                    *nearest,
-                    telemetryDeltaMs);
-            }
-        }
+        attachTelemetryWindow(
+            event,
+            telemetryRows,
+            telemetryTargetTime100ns);
 
         classifySignals(event);
 
@@ -697,6 +758,36 @@ bool writeStutterCorrelationReport(
         << result.events.size()
         << ",\n"
         << "  \"events\": [\n";
+
+    const auto writeTelemetryPointJson =
+        [&](const StutterTelemetryPoint& p) {
+            if (!p.valid) {
+                json << "null";
+                return;
+            }
+
+            json
+                << "{"
+                << "\"offset_ms\":" << p.offsetMs
+                << ",\"process_cpu_pct\":" << p.processCpuPct
+                << ",\"system_cpu_pct\":" << p.systemCpuPct
+                << ",\"working_set_mib\":" << p.workingSetMiB
+                << ",\"private_usage_mib\":" << p.privateUsageMiB
+                << ",\"process_read_mib_s\":" << p.processReadMiBps
+                << ",\"process_write_mib_s\":" << p.processWriteMiBps
+                << ",\"system_memory_load_pct\":" << p.systemMemoryLoadPct
+                << ",\"system_memory_available_mib\":" << p.systemMemoryAvailableMiB
+                << ",\"gpu_util_pct\":" << p.gpuUtilPct
+                << ",\"gpu_mem_util_pct\":" << p.gpuMemoryUtilPct
+                << ",\"vram_used_mib\":" << p.vramUsedMiB
+                << ",\"vram_total_mib\":" << p.vramTotalMiB
+                << ",\"gpu_temp_c\":" << p.gpuTempC
+                << ",\"gpu_graphics_mhz\":" << p.gpuGraphicsMHz
+                << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
+                << ",\"gpu_power_w\":" << p.gpuPowerW
+                << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
+                << "}";
+        };
 
     for (std::size_t i = 0;
          i < result.events.size();
@@ -795,6 +886,15 @@ bool writeStutterCorrelationReport(
         } else {
             json << ",\n";
         }
+
+        json << "      \"telemetry_window\": {"
+             << "\"before\":";
+        writeTelemetryPointJson(e.before);
+        json << ",\"nearest\":";
+        writeTelemetryPointJson(e.nearest);
+        json << ",\"after\":";
+        writeTelemetryPointJson(e.after);
+        json << "},\\n";
 
         json << "      \"signals\": [";
         for (std::size_t signalIndex = 0;
@@ -923,6 +1023,27 @@ bool writeStutterCorrelationReport(
             text
                 << "Telemetry: no sample within 1500 ms\n";
         }
+
+        text << "Telemetry window [before / nearest / after]: ";
+        const auto writePointText =
+            [&](const StutterTelemetryPoint& p) {
+                if (!p.valid) {
+                    text << "none";
+                    return;
+                }
+                text
+                    << p.offsetMs << " ms, GPU "
+                    << p.gpuUtilPct << " %, CPU "
+                    << p.processCpuPct << " %, IO "
+                    << p.processReadMiBps << "/"
+                    << p.processWriteMiBps << " MiB/s";
+            };
+        writePointText(e.before);
+        text << " / ";
+        writePointText(e.nearest);
+        text << " / ";
+        writePointText(e.after);
+        text << "\\n";
 
         text << "Signals: ";
         if (e.signals.empty()) {
