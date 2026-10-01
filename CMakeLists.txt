@@ -21,7 +21,18 @@ add_executable(BodycamDiagnostics WIN32
     src/AudioVideoMuxer.cpp
     src/LiveFrameMetrics.cpp
     src/DiagnosticsOverlay.cpp
+    src/FullscreenOverlayBridge.cpp
 )
+
+add_executable(BodycamFullscreenOverlay WIN32
+    src/FullscreenOverlayMain.cpp
+    src/DiagnosticsOverlay.cpp
+)
+
+target_include_directories(BodycamFullscreenOverlay PRIVATE src)
+target_compile_definitions(BodycamFullscreenOverlay PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(BodycamFullscreenOverlay PRIVATE user32 gdi32 advapi32)
+
 
 target_include_directories(BodycamDiagnostics PRIVATE src)
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -30,4 +41,9 @@ target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi
 
 if(MSVC)
     target_compile_options(BodycamDiagnostics PRIVATE /utf-8)
+    target_compile_options(BodycamFullscreenOverlay PRIVATE /utf-8)
+    target_link_options(
+        BodycamFullscreenOverlay PRIVATE
+        "/MANIFEST:EMBED"
+        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/FullscreenOverlay.manifest")
 endif()
