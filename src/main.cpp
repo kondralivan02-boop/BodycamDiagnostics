@@ -16,6 +16,8 @@
 #include "MetricsCalculator.h"
 #include "ReportPackager.h"
 #include "SessionMirror.h"
+#include "AudioLoopbackRecorder.h"
+#include "AudioVideoMuxer.h"
 
 namespace {
 constexpr int ID_STATUS = 1001;
@@ -38,6 +40,7 @@ std::unique_ptr<PresentMonController> gPresentMon;
 std::unique_ptr<RecorderController> gRecorder;
 std::unique_ptr<TelemetrySampler> gTelemetry;
 std::unique_ptr<SessionMirror> gMirror;
+std::unique_ptr<AudioLoopbackRecorder> gAudio;
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
 bool gRunning = false;
@@ -184,6 +187,15 @@ void startSession() {
     else
         gSession->log(L"Recorder unavailable: " + recError);
 
+    gAudio = std::make_unique<AudioLoopbackRecorder>();
+    std::wstring audioError;
+    if (gAudio->start(gSession->sessionPath() / L"game_audio.wav", &audioError))
+        gSession->log(L"WASAPI loopback audio capture started");
+    else {
+        gSession->log(L"Game audio capture unavailable: " + audioError);
+        gAudio.reset();
+    }
+
     gRunning = true;
     EnableWindow(gStart, FALSE);
     EnableWindow(gStop, TRUE);
@@ -198,6 +210,11 @@ void stopSession() {
         gSession->log(L"NVENC recording stopped");
         gRecorder.reset();
     }
+    if (gAudio) {
+        gAudio->stop();
+        gSession->log(L"WASAPI loopback audio capture stopped");
+        gAudio.reset();
+    }
     if (gPresentMon) {
         gPresentMon->stop();
         gSession->log(L"PresentMon capture stopped");
@@ -210,6 +227,13 @@ void stopSession() {
     }
 
     const auto sessionPath = gSession->sessionPath();
+
+    std::wstring muxError;
+    if (muxSessionVideoWithAudio(appDir() / L"Tools" / L"ffmpeg.exe", sessionPath, &muxError))
+        gSession->log(L"Final video with game audio created: video_with_audio.mkv");
+    else
+        gSession->log(L"Audio/video mux unavailable: " + muxError);
+
     const auto summary = calculateMetrics(sessionPath / L"presentmon.csv");
     if (summary.valid) {
         std::wstring reportError;
@@ -304,7 +328,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                       20, 155, 650, 58, hwnd, reinterpret_cast<HMENU>(ID_STATUS), nullptr, nullptr);
 
         CreateWindowW(L"STATIC",
-                      L"F9 Start / Stop • PresentMon + telemetry + NVENC + automatic report ZIP",
+                      L"F9 Start / Stop • PresentMon + telemetry + NVENC + game audio + report ZIP",
                       WS_CHILD | WS_VISIBLE,
                       20, 235, 650, 28, hwnd, nullptr, nullptr, nullptr);
 
