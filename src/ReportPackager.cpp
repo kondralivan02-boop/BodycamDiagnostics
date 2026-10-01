@@ -70,14 +70,16 @@ bool runCommand(const std::wstring& command,
 bool packageSessionReport(const std::filesystem::path& sessionDirectory,
                           const std::filesystem::path& outputZip,
                           std::wstring* error) {
-    static constexpr std::array<const wchar_t*, 7> kReportFiles = {
+    static constexpr std::array<const wchar_t*, 9> kReportFiles = {
         L"session.log",
         L"session.json",
         L"system.json",
         L"presentmon.csv",
         L"telemetry.csv",
         L"summary.json",
-        L"summary.txt"
+        L"summary.txt",
+        L"validation.json",
+        L"validation.txt"
     };
 
     std::error_code ec;
@@ -91,6 +93,13 @@ bool packageSessionReport(const std::filesystem::path& sessionDirectory,
         ec.clear();
         if (std::filesystem::is_regular_file(sessionDirectory / name, ec))
             existing.emplace_back(name);
+    }
+
+    std::error_code crashEc;
+    if (std::filesystem::is_directory(
+            sessionDirectory / L"crash_diagnostics",
+            crashEc)) {
+        existing.emplace_back(L"crash_diagnostics");
     }
 
     if (existing.empty()) {
