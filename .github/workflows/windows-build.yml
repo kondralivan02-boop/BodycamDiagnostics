@@ -2,6 +2,7 @@ name: Windows Build
 
 on:
   push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -11,22 +12,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Expand current source snapshot
-        shell: pwsh
-        run: |
-          Expand-Archive -Path BodycamDiagnostics-current.zip -DestinationPath ci-src -Force
-          if (-not (Test-Path "ci-src/BodycamDiagnostics/CMakeLists.txt")) {
-            throw "Source archive layout is invalid"
-          }
-
       - name: Configure and build Release x64
         shell: pwsh
-        working-directory: ci-src/BodycamDiagnostics
         run: ./build_windows.ps1
 
       - name: Upload BodycamDiagnostics.exe
         uses: actions/upload-artifact@v4
         with:
           name: BodycamDiagnostics-windows-x64
-          path: ci-src/BodycamDiagnostics/build/Release/BodycamDiagnostics.exe
+          path: build/Release/BodycamDiagnostics.exe
           if-no-files-found: error

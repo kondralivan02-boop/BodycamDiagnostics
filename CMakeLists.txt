@@ -14,6 +14,7 @@ add_executable(BodycamDiagnostics WIN32
     src/RecorderController.cpp
     src/ToolPreflight.cpp
     src/TelemetrySampler.cpp
+    src/MetricsCalculator.cpp
 )
 
 target_include_directories(BodycamDiagnostics PRIVATE src)

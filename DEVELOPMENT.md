@@ -1,0 +1,48 @@
+# Bodycam Diagnostics — development checkpoint
+
+## Implemented
+- Native C++20 / Win32 GUI.
+- Automatic lookup of `Bodycam-Win64-Shipping.exe` and PID.
+- F9 start / F10 stop global hotkeys.
+- Per-test session folder.
+- Crash-friendly `session.log` (flush after every event).
+- Atomic `session.json` state (`running` / `stopped`).
+- `system.json`: Windows version/build, RAM, logical processors, display adapters.
+- PresentMon controller: capture only Bodycam PID to `presentmon.csv` using v2 metrics.
+- FFmpeg controller: Windows Desktop Duplication (`ddagrab`) -> `h264_nvenc`.
+- Recording split into 15-second MKV chunks to reduce loss on a hard crash.
+- Graceful FFmpeg shutdown via stdin `q`, with forced termination only as fallback.
+- Tool preflight: verifies PresentMon, FFmpeg, `h264_nvenc`, and `ddagrab` before a test starts.
+- Live telemetry sampler: Bodycam CPU/RAM plus NVIDIA GPU load, VRAM, temperature and clocks via dynamically loaded NVML; writes `telemetry.csv` once per second.
+- CSV metrics summarizer: average FPS, 1% low, 0.1% low, P50/P95/P99/P99.9 frametimes and 50/100 ms stutter counters.
+- Automatic `summary.json` + `summary.txt` generation when a test stops.
+- Built-in test profile selector for the four Bodycam comparison variants (baseline, AMD FSR FG, NVIDIA DLSS FG 2x, Smooth Motion).
+
+## Directory layout at runtime
+```
+BodycamDiagnostics.exe
+Tools/
+  PresentMon.exe
+  ffmpeg.exe
+Sessions/
+  2026-10-01_10-xx-xx_DLSS Quality - FG OFF/
+    session.log
+    session.json
+    system.json
+    presentmon.csv
+    telemetry.csv
+    summary.json
+    summary.txt
+    video/
+      video_00000.mkv
+      video_00001.mkv
+      ...
+```
+
+## Next modules
+1. Remote/off-machine persistence for club/Gizmo environment.
+2. Chat panel / upload pipeline for sending session artifacts for analysis.
+3. Final Windows x64 build and packaging.
+
+## Build status
+The current execution environment has CMake but no Windows SDK / MinGW cross-compiler, so the Windows `.exe` has not yet been produced here. Source work continues independently of that blocker.
