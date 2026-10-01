@@ -95,14 +95,61 @@ bool DiagnosticsOverlay::create(HINSTANCE instance) {
         return false;
     }
 
-    hwnd_ = CreateWindowExW(
+    const DWORD exStyle =
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED |
-        WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
-        kOverlayClass,
-        L"",
-        WS_POPUP,
-        0, 0, width_, height_,
-        nullptr, nullptr, instance, this);
+        WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+
+    // A signed UIAccess helper can use the UIAccess Z-band.  This is the
+    // same Windows mechanism used by accessibility/performance overlays
+    // that must remain visible above fullscreen applications.
+    HANDLE token = nullptr;
+    DWORD uiAccess = 0;
+    DWORD tokenBytes = 0;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+        GetTokenInformation(
+            token,
+            TokenUIAccess,
+            &uiAccess,
+            sizeof(uiAccess),
+            &tokenBytes);
+        CloseHandle(token);
+    }
+
+    if (uiAccess != 0) {
+        using CreateWindowInBandFn = HWND (WINAPI*)(
+            DWORD, LPCWSTR, LPCWSTR, DWORD,
+            int, int, int, int,
+            HWND, HMENU, HINSTANCE, LPVOID, DWORD);
+
+        constexpr DWORD ZBID_UIACCESS = 2;
+        const HMODULE user32 = GetModuleHandleW(L"user32.dll");
+        const auto createWindowInBand =
+            reinterpret_cast<CreateWindowInBandFn>(
+                user32
+                    ? GetProcAddress(user32, "CreateWindowInBand")
+                    : nullptr);
+
+        if (createWindowInBand) {
+            hwnd_ = createWindowInBand(
+                exStyle,
+                kOverlayClass,
+                L"",
+                WS_POPUP,
+                0, 0, width_, height_,
+                nullptr, nullptr, instance, this,
+                ZBID_UIACCESS);
+        }
+    }
+
+    if (!hwnd_) {
+        hwnd_ = CreateWindowExW(
+            exStyle,
+            kOverlayClass,
+            L"",
+            WS_POPUP,
+            0, 0, width_, height_,
+            nullptr, nullptr, instance, this);
+    }
 
     if (!hwnd_) return false;
 
