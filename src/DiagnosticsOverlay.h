@@ -26,10 +26,12 @@ private:
     void ensureFonts();
 
     HWND hwnd_ = nullptr;
-    HFONT titleFont_ = nullptr;
+    HFONT font_ = nullptr;
     HFONT valueFont_ = nullptr;
-    HFONT labelFont_ = nullptr;
     bool visible_ = false;
+
+    int width_ = 1400;
+    int height_ = 52;
 
     LiveFrameSnapshot frame_;
     TelemetrySnapshot telemetry_;
