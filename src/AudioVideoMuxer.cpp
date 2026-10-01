@@ -98,7 +98,10 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
         const auto& path = it->path();
         if (path.extension() == L".mkv" &&
             path.filename().wstring().rfind(L"video_", 0) == 0) {
-            segments.push_back(path.filename());
+            std::error_code sizeEc;
+            const auto bytes = std::filesystem::file_size(path, sizeEc);
+            if (!sizeEc && bytes > 0)
+                segments.push_back(path.filename());
         }
     }
 
