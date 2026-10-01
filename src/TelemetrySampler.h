@@ -13,6 +13,8 @@ struct TelemetrySnapshot {
     double systemCpuPct = 0.0;
     double workingSetMiB = 0.0;
     double privateUsageMiB = 0.0;
+    double processReadMiBps = 0.0;
+    double processWriteMiBps = 0.0;
     double systemMemoryLoadPct = 0.0;
     double systemMemoryAvailableMiB = 0.0;
     unsigned gpuUtilPct = 0;
