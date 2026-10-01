@@ -41,7 +41,9 @@ Import-Certificate -FilePath $tempCer -CertStoreLocation "Cert:\LocalMachine\Roo
 Import-Certificate -FilePath $tempCer -CertStoreLocation "Cert:\LocalMachine\TrustedPublisher" | Out-Null
 Remove-Item $tempCer -Force -ErrorAction SilentlyContinue
 
+Unblock-File -Path $source -ErrorAction SilentlyContinue
 Copy-Item $source $target -Force
+Unblock-File -Path $target -ErrorAction SilentlyContinue
 $signature = Set-AuthenticodeSignature -FilePath $target -Certificate $cert -HashAlgorithm SHA256
 
 if ($signature.Status -ne "Valid") {
