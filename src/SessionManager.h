@@ -20,7 +20,7 @@ private:
 
     std::filesystem::path root_;
     std::filesystem::path sessionPath_;
-    std::wofstream logFile_;
+    std::ofstream logFile_;
     std::wstring presetName_;
     bool running_ = false;
 };
