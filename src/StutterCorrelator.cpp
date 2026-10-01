@@ -39,7 +39,7 @@ std::vector<std::string> parseCsvLine(const std::string& line) {
         } else if (c == ',') {
             fields.push_back(std::move(field));
             field.clear();
-        } else {
+        } else if (c != '\r') {
             field.push_back(c);
         }
     }
@@ -68,7 +68,6 @@ std::string utf16LeBytesToUtf8(const std::string& bytes) {
     for (std::size_t i = 0; i < charCount; ++i) {
         const auto lo = static_cast<unsigned char>(bytes[i * 2]);
         const auto hi = static_cast<unsigned char>(bytes[i * 2 + 1]);
-
         wide[i] = static_cast<wchar_t>(
             static_cast<unsigned>(lo) |
             (static_cast<unsigned>(hi) << 8));
@@ -88,7 +87,6 @@ std::string utf16LeBytesToUtf8(const std::string& bytes) {
         return {};
 
     std::string out(static_cast<std::size_t>(required), '\0');
-
     WideCharToMultiByte(
         CP_UTF8,
         0,
@@ -102,10 +100,7 @@ std::string utf16LeBytesToUtf8(const std::string& bytes) {
     return out;
 }
 
-bool loadTextUtf8(
-    const std::filesystem::path& path,
-    std::string& text) {
-
+bool loadTextUtf8(const std::filesystem::path& path, std::string& text) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return false;
@@ -117,12 +112,9 @@ bool loadTextUtf8(
     if (bytes.size() >= 2 &&
         static_cast<unsigned char>(bytes[0]) == 0xFF &&
         static_cast<unsigned char>(bytes[1]) == 0xFE) {
-
         bytes.erase(0, 2);
-
         if (bytes.size() % 2 != 0)
             bytes.pop_back();
-
         text = utf16LeBytesToUtf8(bytes);
         return true;
     }
@@ -135,14 +127,11 @@ std::size_t findColumn(
     const std::vector<std::string>& headers,
     const char* name) {
 
-    const auto it =
-        std::find(headers.begin(), headers.end(), name);
-
+    const auto it = std::find(headers.begin(), headers.end(), name);
     if (it == headers.end())
         return std::numeric_limits<std::size_t>::max();
 
-    return static_cast<std::size_t>(
-        std::distance(headers.begin(), it));
+    return static_cast<std::size_t>(std::distance(headers.begin(), it));
 }
 
 bool parseDouble(
@@ -154,16 +143,13 @@ bool parseDouble(
         return false;
 
     const auto& text = fields[index];
-
     if (text.empty() || text == "NA")
         return false;
 
     char* end = nullptr;
     errno = 0;
 
-    const double parsed =
-        std::strtod(text.c_str(), &end);
-
+    const double parsed = std::strtod(text.c_str(), &end);
     if (errno != 0 ||
         end == text.c_str() ||
         *end != '\0' ||
@@ -175,15 +161,10 @@ bool parseDouble(
     return true;
 }
 
-bool parseTimestamp100ns(
-    const std::string& text,
-    unsigned long long& value) {
-
+bool parseTimestamp100ns(const std::string& text, unsigned long long& value) {
     const auto dot = text.find('.');
     const std::string base =
-        dot == std::string::npos
-            ? text
-            : text.substr(0, dot);
+        dot == std::string::npos ? text : text.substr(0, dot);
 
     unsigned year = 0;
     unsigned month = 0;
@@ -205,21 +186,14 @@ bool parseTimestamp100ns(
     }
 
     unsigned milliseconds = 0;
-
     if (dot != std::string::npos && dot + 1 < text.size()) {
         std::string fraction = text.substr(dot + 1);
-
         if (fraction.size() > 3)
             fraction.resize(3);
-
         while (fraction.size() < 3)
             fraction.push_back('0');
-
-        milliseconds =
-            static_cast<unsigned>(std::strtoul(
-                fraction.c_str(),
-                nullptr,
-                10));
+        milliseconds = static_cast<unsigned>(
+            std::strtoul(fraction.c_str(), nullptr, 10));
     }
 
     SYSTEMTIME st{};
@@ -232,14 +206,12 @@ bool parseTimestamp100ns(
     st.wMilliseconds = static_cast<WORD>(milliseconds);
 
     FILETIME ft{};
-
     if (!SystemTimeToFileTime(&st, &ft))
         return false;
 
     ULARGE_INTEGER u{};
     u.LowPart = ft.dwLowDateTime;
     u.HighPart = ft.dwHighDateTime;
-
     value = u.QuadPart;
     return true;
 }
@@ -288,82 +260,49 @@ bool loadTelemetry(
     std::vector<TelemetryRow>& rows) {
 
     std::string csvText;
-
     if (!loadTextUtf8(telemetryCsv, csvText))
         return false;
 
     std::istringstream in(csvText);
-
     std::string headerLine;
-
     if (!std::getline(in, headerLine))
         return false;
 
-    const auto headers =
-        parseCsvLine(trimBom(headerLine));
-
-    const auto timestampIndex =
-        findColumn(headers, "timestamp");
-
-    if (timestampIndex ==
-        std::numeric_limits<std::size_t>::max()) {
+    const auto headers = parseCsvLine(trimBom(headerLine));
+    const auto timestampIndex = findColumn(headers, "timestamp");
+    if (timestampIndex == std::numeric_limits<std::size_t>::max())
         return false;
-    }
 
-    const auto processCpuIndex =
-        findColumn(headers, "process_cpu_pct");
-    const auto systemCpuIndex =
-        findColumn(headers, "system_cpu_pct");
-    const auto workingSetIndex =
-        findColumn(headers, "working_set_mib");
-    const auto privateUsageIndex =
-        findColumn(headers, "private_usage_mib");
-    const auto processReadIndex =
-        findColumn(headers, "process_read_mib_s");
-    const auto processWriteIndex =
-        findColumn(headers, "process_write_mib_s");
-    const auto memoryLoadIndex =
-        findColumn(headers, "system_memory_load_pct");
-    const auto memoryAvailableIndex =
-        findColumn(headers, "system_memory_available_mib");
-    const auto gpuUtilIndex =
-        findColumn(headers, "gpu_util_pct");
-    const auto gpuMemoryUtilIndex =
-        findColumn(headers, "gpu_mem_util_pct");
-    const auto vramUsedIndex =
-        findColumn(headers, "vram_used_mib");
-    const auto vramTotalIndex =
-        findColumn(headers, "vram_total_mib");
-    const auto gpuTempIndex =
-        findColumn(headers, "gpu_temp_c");
-    const auto gpuGraphicsIndex =
-        findColumn(headers, "gpu_graphics_mhz");
-    const auto gpuMemoryIndex =
-        findColumn(headers, "gpu_memory_mhz");
-    const auto gpuPowerIndex =
-        findColumn(headers, "gpu_power_w");
-    const auto gpuPowerLimitIndex =
-        findColumn(headers, "gpu_power_limit_w");
+    const auto processCpuIndex = findColumn(headers, "process_cpu_pct");
+    const auto systemCpuIndex = findColumn(headers, "system_cpu_pct");
+    const auto workingSetIndex = findColumn(headers, "working_set_mib");
+    const auto privateUsageIndex = findColumn(headers, "private_usage_mib");
+    const auto processReadIndex = findColumn(headers, "process_read_mib_s");
+    const auto processWriteIndex = findColumn(headers, "process_write_mib_s");
+    const auto memoryLoadIndex = findColumn(headers, "system_memory_load_pct");
+    const auto memoryAvailableIndex = findColumn(headers, "system_memory_available_mib");
+    const auto gpuUtilIndex = findColumn(headers, "gpu_util_pct");
+    const auto gpuMemoryUtilIndex = findColumn(headers, "gpu_mem_util_pct");
+    const auto vramUsedIndex = findColumn(headers, "vram_used_mib");
+    const auto vramTotalIndex = findColumn(headers, "vram_total_mib");
+    const auto gpuTempIndex = findColumn(headers, "gpu_temp_c");
+    const auto gpuGraphicsIndex = findColumn(headers, "gpu_graphics_mhz");
+    const auto gpuMemoryIndex = findColumn(headers, "gpu_memory_mhz");
+    const auto gpuPowerIndex = findColumn(headers, "gpu_power_w");
+    const auto gpuPowerLimitIndex = findColumn(headers, "gpu_power_limit_w");
 
     std::string line;
-
     while (std::getline(in, line)) {
         if (line.empty())
             continue;
 
-        const auto fields =
-            parseCsvLine(line);
-
+        const auto fields = parseCsvLine(line);
         if (timestampIndex >= fields.size())
             continue;
 
         TelemetryRow row{};
-
-        if (!parseTimestamp100ns(
-                fields[timestampIndex],
-                row.time100ns)) {
+        if (!parseTimestamp100ns(fields[timestampIndex], row.time100ns))
             continue;
-        }
 
         parseDouble(fields, processCpuIndex, row.processCpuPct);
         parseDouble(fields, systemCpuIndex, row.systemCpuPct);
@@ -382,7 +321,6 @@ bool loadTelemetry(
         parseDouble(fields, gpuMemoryIndex, row.gpuMemoryMHz);
         parseDouble(fields, gpuPowerIndex, row.gpuPowerW);
         parseDouble(fields, gpuPowerLimitIndex, row.gpuPowerLimitW);
-
         rows.push_back(row);
     }
 
@@ -404,157 +342,72 @@ const TelemetryRow* nearestTelemetry(
     if (rows.empty())
         return nullptr;
 
-    const auto it =
-        std::lower_bound(
-            rows.begin(),
-            rows.end(),
-            time100ns,
-            [](const TelemetryRow& row, unsigned long long value) {
-                return row.time100ns < value;
-            });
+    const auto it = std::lower_bound(
+        rows.begin(),
+        rows.end(),
+        time100ns,
+        [](const TelemetryRow& row, unsigned long long value) {
+            return row.time100ns < value;
+        });
 
     const TelemetryRow* best = nullptr;
     unsigned long long bestDelta =
         std::numeric_limits<unsigned long long>::max();
 
-    auto consider =
-        [&](const TelemetryRow& row) {
-            const unsigned long long delta =
-                row.time100ns > time100ns
-                    ? row.time100ns - time100ns
-                    : time100ns - row.time100ns;
+    auto consider = [&](const TelemetryRow& row) {
+        const unsigned long long delta =
+            row.time100ns > time100ns
+                ? row.time100ns - time100ns
+                : time100ns - row.time100ns;
 
-            if (delta < bestDelta) {
-                bestDelta = delta;
-                best = &row;
-            }
-        };
+        if (delta < bestDelta) {
+            bestDelta = delta;
+            best = &row;
+        }
+    };
 
     if (it != rows.end())
         consider(*it);
-
     if (it != rows.begin())
         consider(*std::prev(it));
-
     if (!best)
         return nullptr;
 
-    deltaMs =
-        static_cast<double>(bestDelta) / 10000.0;
-
+    deltaMs = static_cast<double>(bestDelta) / 10000.0;
     return best;
 }
 
+StutterTelemetryPoint makeTelemetryPoint(
+    const TelemetryRow& row,
+    unsigned long long eventStartTime100ns) {
 
+    StutterTelemetryPoint point{};
+    point.valid = true;
 
-StutterTelemetryDelta telemetryDelta(
-    const StutterTelemetryPoint& from,
-    const StutterTelemetryPoint& to) {
+    const long long signedDelta =
+        row.time100ns >= eventStartTime100ns
+            ? static_cast<long long>(row.time100ns - eventStartTime100ns)
+            : -static_cast<long long>(eventStartTime100ns - row.time100ns);
 
-    StutterTelemetryDelta delta{};
-    if (!from.valid || !to.valid)
-        return delta;
-
-    delta.valid = true;
-    delta.processCpuPct = to.processCpuPct - from.processCpuPct;
-    delta.systemCpuPct = to.systemCpuPct - from.systemCpuPct;
-    delta.processReadMiBps = to.processReadMiBps - from.processReadMiBps;
-    delta.processWriteMiBps = to.processWriteMiBps - from.processWriteMiBps;
-    delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
-    delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
-    delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
-    return delta;
-}
-
-void calculateTelemetryDeltas(StutterEvent& event) {
-    event.beforeToNearest =
-        telemetryDelta(event.before, event.nearest);
-    event.nearestToAfter =
-        telemetryDelta(event.nearest, event.after);
-    event.beforeToAfter =
-        telemetryDelta(event.before, event.after);
-}
-
-void classifySignals(StutterEvent& event) {
-    const double frame = event.frameTimeMs;
-
-    if (event.cpuBusyMs >= 100.0 &&
-        event.cpuBusyMs >= frame * 0.50) {
-        event.signals.push_back("CPU_BUSY_DOMINANT");
-    }
-
-    if (event.cpuWaitMs >= 100.0 &&
-        event.cpuWaitMs >= frame * 0.25) {
-        event.signals.push_back("CPU_WAIT_HIGH");
-    }
-
-    if (event.gpuBusyMs >= 100.0 &&
-        event.gpuBusyMs >= frame * 0.25) {
-        event.signals.push_back("GPU_BUSY_HIGH");
-    }
-
-    if (event.gpuWaitMs >= 100.0 &&
-        event.gpuWaitMs >= frame * 0.25) {
-        event.signals.push_back("GPU_WAIT_HIGH");
-    }
-
-    if (event.beforeToNearest.valid &&
-        event.beforeToNearest.gpuUtilPct <= -30.0) {
-        event.signals.push_back("GPU_UTIL_DROP_AROUND_STALL");
-    }
-
-    if (event.beforeToNearest.valid &&
-        event.beforeToNearest.gpuGraphicsMHz <= -500.0) {
-        event.signals.push_back("GPU_CLOCK_DROP_AROUND_STALL");
-    }
-
-    if (event.nearestToAfter.valid &&
-        event.nearestToAfter.gpuUtilPct >= 30.0) {
-        event.signals.push_back("GPU_UTIL_RECOVERY_AFTER_STALL");
-    }
-
-    if (event.nearestToAfter.valid &&
-        event.nearestToAfter.gpuGraphicsMHz >= 500.0) {
-        event.signals.push_back("GPU_CLOCK_RECOVERY_AFTER_STALL");
-    }
-
-    if (event.beforeToNearest.valid &&
-        event.beforeToNearest.processReadMiBps >= 50.0) {
-        event.signals.push_back("BODYCAM_READ_SPIKE_AROUND_STALL");
-    }
-
-    if (event.beforeToNearest.valid &&
-        event.beforeToNearest.processWriteMiBps >= 50.0) {
-        event.signals.push_back("BODYCAM_WRITE_SPIKE_AROUND_STALL");
-    }
-
-    if (!event.telemetryMatched)
-        return;
-
-    if (frame >= 250.0 &&
-        event.gpuUtilPct <= 15.0) {
-        event.signals.push_back("GPU_UTIL_LOW_NEAR_STALL");
-    }
-
-    if (event.systemCpuPct >= 90.0) {
-        event.signals.push_back("SYSTEM_CPU_HIGH");
-    }
-
-    if (event.systemMemoryLoadPct >= 90.0 ||
-        (event.systemMemoryAvailableMiB > 0.0 &&
-         event.systemMemoryAvailableMiB <= 2048.0)) {
-        event.signals.push_back("SYSTEM_MEMORY_PRESSURE");
-    }
-
-    if (event.vramTotalMiB > 0.0 &&
-        event.vramUsedMiB / event.vramTotalMiB >= 0.95) {
-        event.signals.push_back("VRAM_PRESSURE");
-    }
-
-    if (event.gpuPowerLimitW > 0.0 &&
-        event.gpuPowerW / event.gpuPowerLimitW >= 0.95) {
-        event.signals.push_back("GPU_POWER_NEAR_LIMIT");
-    }
+    point.offsetMs = static_cast<double>(signedDelta) / 10000.0;
+    point.processCpuPct = row.processCpuPct;
+    point.systemCpuPct = row.systemCpuPct;
+    point.workingSetMiB = row.workingSetMiB;
+    point.privateUsageMiB = row.privateUsageMiB;
+    point.processReadMiBps = row.processReadMiBps;
+    point.processWriteMiBps = row.processWriteMiBps;
+    point.systemMemoryLoadPct = row.systemMemoryLoadPct;
+    point.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
+    point.gpuUtilPct = row.gpuUtilPct;
+    point.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
+    point.vramUsedMiB = row.vramUsedMiB;
+    point.vramTotalMiB = row.vramTotalMiB;
+    point.gpuTempC = row.gpuTempC;
+    point.gpuGraphicsMHz = row.gpuGraphicsMHz;
+    point.gpuMemoryMHz = row.gpuMemoryMHz;
+    point.gpuPowerW = row.gpuPowerW;
+    point.gpuPowerLimitW = row.gpuPowerLimitW;
+    return point;
 }
 
 void copyTelemetry(
@@ -583,76 +436,205 @@ void copyTelemetry(
     event.gpuPowerLimitW = row.gpuPowerLimitW;
 }
 
-StutterTelemetryPoint makeTelemetryPoint(
-    const TelemetryRow& row,
-    unsigned long long targetTime100ns) {
+StutterTelemetryDelta telemetryDelta(
+    const StutterTelemetryPoint& from,
+    const StutterTelemetryPoint& to) {
 
-    StutterTelemetryPoint point{};
-    point.valid = true;
+    StutterTelemetryDelta delta{};
+    if (!from.valid || !to.valid)
+        return delta;
 
-    const long long signedDelta =
-        row.time100ns >= targetTime100ns
-            ? static_cast<long long>(row.time100ns - targetTime100ns)
-            : -static_cast<long long>(targetTime100ns - row.time100ns);
+    delta.valid = true;
+    delta.processCpuPct = to.processCpuPct - from.processCpuPct;
+    delta.systemCpuPct = to.systemCpuPct - from.systemCpuPct;
+    delta.processReadMiBps = to.processReadMiBps - from.processReadMiBps;
+    delta.processWriteMiBps = to.processWriteMiBps - from.processWriteMiBps;
+    delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
+    delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
+    delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
+    return delta;
+}
 
-    point.offsetMs =
-        static_cast<double>(signedDelta) / 10000.0;
-    point.processCpuPct = row.processCpuPct;
-    point.systemCpuPct = row.systemCpuPct;
-    point.workingSetMiB = row.workingSetMiB;
-    point.privateUsageMiB = row.privateUsageMiB;
-    point.processReadMiBps = row.processReadMiBps;
-    point.processWriteMiBps = row.processWriteMiBps;
-    point.systemMemoryLoadPct = row.systemMemoryLoadPct;
-    point.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
-    point.gpuUtilPct = row.gpuUtilPct;
-    point.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
-    point.vramUsedMiB = row.vramUsedMiB;
-    point.vramTotalMiB = row.vramTotalMiB;
-    point.gpuTempC = row.gpuTempC;
-    point.gpuGraphicsMHz = row.gpuGraphicsMHz;
-    point.gpuMemoryMHz = row.gpuMemoryMHz;
-    point.gpuPowerW = row.gpuPowerW;
-    point.gpuPowerLimitW = row.gpuPowerLimitW;
-    return point;
+void calculateTelemetryDeltas(StutterEvent& event) {
+    event.beforeToNearest = telemetryDelta(event.before, event.nearest);
+    event.nearestToAfter = telemetryDelta(event.nearest, event.after);
+    event.beforeToAfter = telemetryDelta(event.before, event.after);
 }
 
 void attachTelemetryWindow(
     StutterEvent& event,
     const std::vector<TelemetryRow>& rows,
-    unsigned long long targetTime100ns) {
+    unsigned long long eventStartTime100ns,
+    unsigned long long eventEndTime100ns) {
 
     if (rows.empty())
         return;
 
-    const auto it =
-        std::lower_bound(
-            rows.begin(),
-            rows.end(),
-            targetTime100ns,
-            [](const TelemetryRow& row, unsigned long long value) {
-                return row.time100ns < value;
-            });
+    const auto startIt = std::lower_bound(
+        rows.begin(),
+        rows.end(),
+        eventStartTime100ns,
+        [](const TelemetryRow& row, unsigned long long value) {
+            return row.time100ns < value;
+        });
 
-    if (it != rows.begin()) {
-        const auto& row = *std::prev(it);
-        event.before = makeTelemetryPoint(row, targetTime100ns);
+    if (startIt != rows.begin()) {
+        const auto& row = *std::prev(startIt);
+        const double beforeDeltaMs =
+            static_cast<double>(eventStartTime100ns - row.time100ns) / 10000.0;
+        if (beforeDeltaMs <= 2500.0)
+            event.before = makeTelemetryPoint(row, eventStartTime100ns);
     }
 
-    if (it != rows.end()) {
-        event.after = makeTelemetryPoint(*it, targetTime100ns);
+    const auto afterIt = std::lower_bound(
+        rows.begin(),
+        rows.end(),
+        eventEndTime100ns,
+        [](const TelemetryRow& row, unsigned long long value) {
+            return row.time100ns < value;
+        });
+
+    if (afterIt != rows.end()) {
+        const double afterDeltaMs =
+            static_cast<double>(afterIt->time100ns - eventEndTime100ns) / 10000.0;
+        if (afterDeltaMs <= 2500.0)
+            event.after = makeTelemetryPoint(*afterIt, eventStartTime100ns);
     }
 
     double nearestDeltaMs = 0.0;
-    if (const auto* row =
-            nearestTelemetry(rows, targetTime100ns, nearestDeltaMs)) {
+    if (const auto* row = nearestTelemetry(rows, eventStartTime100ns, nearestDeltaMs)) {
         if (nearestDeltaMs <= 1500.0) {
-            event.nearest = makeTelemetryPoint(*row, targetTime100ns);
+            event.nearest = makeTelemetryPoint(*row, eventStartTime100ns);
             copyTelemetry(event, *row, nearestDeltaMs);
         }
     }
 }
 
+void classifySignals(StutterEvent& event) {
+    const double frame = event.frameTimeMs;
+
+    if (event.cpuBusyMs >= 100.0 && event.cpuBusyMs >= frame * 0.50)
+        event.signals.push_back("CPU_BUSY_DOMINANT");
+
+    if (event.cpuWaitMs >= 100.0 && event.cpuWaitMs >= frame * 0.25)
+        event.signals.push_back("CPU_WAIT_HIGH");
+
+    if (event.gpuBusyMs >= 100.0 && event.gpuBusyMs >= frame * 0.25)
+        event.signals.push_back("GPU_BUSY_HIGH");
+
+    if (event.gpuWaitMs >= 100.0 && event.gpuWaitMs >= frame * 0.25)
+        event.signals.push_back("GPU_WAIT_HIGH");
+
+    if (event.beforeToNearest.valid && event.beforeToNearest.gpuUtilPct <= -30.0)
+        event.signals.push_back("GPU_UTIL_DROP_AROUND_STALL");
+
+    if (event.beforeToNearest.valid && event.beforeToNearest.gpuGraphicsMHz <= -500.0)
+        event.signals.push_back("GPU_CLOCK_DROP_AROUND_STALL");
+
+    if (event.nearestToAfter.valid && event.nearestToAfter.gpuUtilPct >= 30.0)
+        event.signals.push_back("GPU_UTIL_RECOVERY_AFTER_STALL");
+
+    if (event.nearestToAfter.valid && event.nearestToAfter.gpuGraphicsMHz >= 500.0)
+        event.signals.push_back("GPU_CLOCK_RECOVERY_AFTER_STALL");
+
+    if (event.beforeToNearest.valid && event.beforeToNearest.processReadMiBps >= 50.0)
+        event.signals.push_back("BODYCAM_READ_SPIKE_AROUND_STALL");
+
+    if (event.beforeToNearest.valid && event.beforeToNearest.processWriteMiBps >= 50.0)
+        event.signals.push_back("BODYCAM_WRITE_SPIKE_AROUND_STALL");
+
+    if (!event.telemetryMatched)
+        return;
+
+    if (frame >= 250.0 && event.gpuUtilPct <= 15.0)
+        event.signals.push_back("GPU_UTIL_LOW_NEAR_STALL");
+
+    if (event.systemCpuPct >= 90.0)
+        event.signals.push_back("SYSTEM_CPU_HIGH");
+
+    if (event.systemMemoryLoadPct >= 90.0 ||
+        (event.systemMemoryAvailableMiB > 0.0 &&
+         event.systemMemoryAvailableMiB <= 2048.0)) {
+        event.signals.push_back("SYSTEM_MEMORY_PRESSURE");
+    }
+
+    if (event.vramTotalMiB > 0.0 &&
+        event.vramUsedMiB / event.vramTotalMiB >= 0.95) {
+        event.signals.push_back("VRAM_PRESSURE");
+    }
+
+    if (event.gpuPowerLimitW > 0.0 &&
+        event.gpuPowerW / event.gpuPowerLimitW >= 0.95) {
+        event.signals.push_back("GPU_POWER_NEAR_LIMIT");
+    }
+}
+
+void writeTelemetryPointJson(
+    std::ofstream& json,
+    const StutterTelemetryPoint& p) {
+
+    if (!p.valid) {
+        json << "null";
+        return;
+    }
+
+    json << "{"
+         << "\"offset_ms\":" << p.offsetMs
+         << ",\"process_cpu_pct\":" << p.processCpuPct
+         << ",\"system_cpu_pct\":" << p.systemCpuPct
+         << ",\"working_set_mib\":" << p.workingSetMiB
+         << ",\"private_usage_mib\":" << p.privateUsageMiB
+         << ",\"process_read_mib_s\":" << p.processReadMiBps
+         << ",\"process_write_mib_s\":" << p.processWriteMiBps
+         << ",\"system_memory_load_pct\":" << p.systemMemoryLoadPct
+         << ",\"system_memory_available_mib\":" << p.systemMemoryAvailableMiB
+         << ",\"gpu_util_pct\":" << p.gpuUtilPct
+         << ",\"gpu_mem_util_pct\":" << p.gpuMemoryUtilPct
+         << ",\"vram_used_mib\":" << p.vramUsedMiB
+         << ",\"vram_total_mib\":" << p.vramTotalMiB
+         << ",\"gpu_temp_c\":" << p.gpuTempC
+         << ",\"gpu_graphics_mhz\":" << p.gpuGraphicsMHz
+         << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
+         << ",\"gpu_power_w\":" << p.gpuPowerW
+         << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
+         << "}";
+}
+
+void writeTelemetryDeltaJson(
+    std::ofstream& json,
+    const StutterTelemetryDelta& d) {
+
+    if (!d.valid) {
+        json << "null";
+        return;
+    }
+
+    json << "{"
+         << "\"process_cpu_pct\":" << d.processCpuPct
+         << ",\"system_cpu_pct\":" << d.systemCpuPct
+         << ",\"process_read_mib_s\":" << d.processReadMiBps
+         << ",\"process_write_mib_s\":" << d.processWriteMiBps
+         << ",\"gpu_util_pct\":" << d.gpuUtilPct
+         << ",\"gpu_graphics_mhz\":" << d.gpuGraphicsMHz
+         << ",\"gpu_power_w\":" << d.gpuPowerW
+         << "}";
+}
+
+void writePointText(
+    std::ofstream& text,
+    const StutterTelemetryPoint& p) {
+
+    if (!p.valid) {
+        text << "none";
+        return;
+    }
+
+    text << p.offsetMs << " ms, GPU "
+         << p.gpuUtilPct << " %, CPU "
+         << p.processCpuPct << " %, IO "
+         << p.processReadMiBps << "/"
+         << p.processWriteMiBps << " MiB/s";
+}
 }
 
 StutterCorrelationResult correlateStutterEvents(
@@ -661,7 +643,6 @@ StutterCorrelationResult correlateStutterEvents(
     double thresholdMs) {
 
     StutterCorrelationResult result;
-
     std::string csvText;
 
     if (!loadTextUtf8(presentMonCsv, csvText)) {
@@ -671,36 +652,24 @@ StutterCorrelationResult correlateStutterEvents(
 
     std::istringstream in(csvText);
     std::string headerLine;
-
     if (!std::getline(in, headerLine)) {
         result.error = L"presentmon.csv is empty";
         return result;
     }
 
-    const auto headers =
-        parseCsvLine(trimBom(headerLine));
-
-    const auto timeIndex =
-        findColumn(headers, "CPUStartDateTime");
-    const auto frameTimeIndex =
-        findColumn(headers, "FrameTime");
-    const auto cpuBusyIndex =
-        findColumn(headers, "CPUBusy");
-    const auto cpuWaitIndex =
-        findColumn(headers, "CPUWait");
-    const auto gpuTimeIndex =
-        findColumn(headers, "GPUTime");
-    const auto gpuBusyIndex =
-        findColumn(headers, "GPUBusy");
-    const auto gpuWaitIndex =
-        findColumn(headers, "GPUWait");
-    const auto presentModeIndex =
-        findColumn(headers, "PresentMode");
+    const auto headers = parseCsvLine(trimBom(headerLine));
+    const auto timeIndex = findColumn(headers, "CPUStartDateTime");
+    const auto frameTimeIndex = findColumn(headers, "FrameTime");
+    const auto cpuBusyIndex = findColumn(headers, "CPUBusy");
+    const auto cpuWaitIndex = findColumn(headers, "CPUWait");
+    const auto gpuTimeIndex = findColumn(headers, "GPUTime");
+    const auto gpuBusyIndex = findColumn(headers, "GPUBusy");
+    const auto gpuWaitIndex = findColumn(headers, "GPUWait");
+    const auto presentModeIndex = findColumn(headers, "PresentMode");
 
     if (timeIndex == std::numeric_limits<std::size_t>::max() ||
         frameTimeIndex == std::numeric_limits<std::size_t>::max()) {
-        result.error =
-            L"presentmon.csv lacks CPUStartDateTime or FrameTime";
+        result.error = L"presentmon.csv lacks CPUStartDateTime or FrameTime";
         return result;
     }
 
@@ -715,19 +684,13 @@ StutterCorrelationResult correlateStutterEvents(
         if (line.empty())
             continue;
 
-        const auto fields =
-            parseCsvLine(line);
-
+        const auto fields = parseCsvLine(line);
         if (timeIndex >= fields.size())
             continue;
 
         unsigned long long eventTime100ns = 0;
-
-        if (!parseTimestamp100ns(
-                fields[timeIndex],
-                eventTime100ns)) {
+        if (!parseTimestamp100ns(fields[timeIndex], eventTime100ns))
             continue;
-        }
 
         if (!presentMonBaseSet) {
             presentMonBaseTime100ns = eventTime100ns;
@@ -735,11 +698,7 @@ StutterCorrelationResult correlateStutterEvents(
         }
 
         double frameTimeMs = 0.0;
-
-        if (!parseDouble(
-                fields,
-                frameTimeIndex,
-                frameTimeMs) ||
+        if (!parseDouble(fields, frameTimeIndex, frameTimeMs) ||
             frameTimeMs < thresholdMs) {
             continue;
         }
@@ -747,7 +706,6 @@ StutterCorrelationResult correlateStutterEvents(
         StutterEvent event{};
         event.timestamp = fields[timeIndex];
         event.frameTimeMs = frameTimeMs;
-
         parseDouble(fields, cpuBusyIndex, event.cpuBusyMs);
         parseDouble(fields, cpuWaitIndex, event.cpuWaitMs);
         parseDouble(fields, gpuTimeIndex, event.gpuTimeMs);
@@ -757,25 +715,29 @@ StutterCorrelationResult correlateStutterEvents(
         if (presentModeIndex < fields.size())
             event.presentMode = fields[presentModeIndex];
 
-        unsigned long long telemetryTargetTime100ns =
-            eventTime100ns;
-
+        unsigned long long telemetryStartTime100ns = eventTime100ns;
         if (!telemetryRows.empty() &&
             presentMonBaseSet &&
             eventTime100ns >= presentMonBaseTime100ns) {
-            telemetryTargetTime100ns =
+            telemetryStartTime100ns =
                 telemetryRows.front().time100ns +
                 (eventTime100ns - presentMonBaseTime100ns);
         }
 
+        const unsigned long long frameDuration100ns =
+            static_cast<unsigned long long>(
+                std::llround(std::max(0.0, frameTimeMs) * 10000.0));
+        const unsigned long long telemetryEndTime100ns =
+            telemetryStartTime100ns + frameDuration100ns;
+
         attachTelemetryWindow(
             event,
             telemetryRows,
-            telemetryTargetTime100ns);
+            telemetryStartTime100ns,
+            telemetryEndTime100ns);
 
         calculateTelemetryDeltas(event);
         classifySignals(event);
-
         result.events.push_back(std::move(event));
     }
 
@@ -791,198 +753,81 @@ bool writeStutterCorrelationReport(
 
     if (!result.valid) {
         if (error)
-            *error =
-                result.error.empty()
-                    ? L"Stutter correlation is invalid"
-                    : result.error;
-
+            *error = result.error.empty()
+                ? L"Stutter correlation is invalid"
+                : result.error;
         return false;
     }
 
-    std::ofstream json(
-        jsonOutput,
-        std::ios::binary |
-        std::ios::trunc);
-
+    std::ofstream json(jsonOutput, std::ios::binary | std::ios::trunc);
     if (!json) {
         if (error)
             *error = L"Cannot create stutter_events.json";
-
         return false;
     }
 
-    json
-        << "{\n"
-        << "  \"threshold_ms\": 100.0,\n"
-        << "  \"event_count\": "
-        << result.events.size()
-        << ",\n"
-        << "  \"events\": [\n";
+    json << std::fixed << std::setprecision(3);
+    json << "{\n";
+    json << "  \"threshold_ms\": 100.0,\n";
+    json << "  \"event_count\": " << result.events.size() << ",\n";
+    json << "  \"telemetry_window_semantics\": "
+            "\"before=start-previous; nearest=start-nearest; after=end-next\",\n";
+    json << "  \"events\": [\n";
 
-    const auto writeTelemetryPointJson =
-        [&](const StutterTelemetryPoint& p) {
-            if (!p.valid) {
-                json << "null";
-                return;
-            }
-
-            json
-                << "{"
-                << "\"offset_ms\":" << p.offsetMs
-                << ",\"process_cpu_pct\":" << p.processCpuPct
-                << ",\"system_cpu_pct\":" << p.systemCpuPct
-                << ",\"working_set_mib\":" << p.workingSetMiB
-                << ",\"private_usage_mib\":" << p.privateUsageMiB
-                << ",\"process_read_mib_s\":" << p.processReadMiBps
-                << ",\"process_write_mib_s\":" << p.processWriteMiBps
-                << ",\"system_memory_load_pct\":" << p.systemMemoryLoadPct
-                << ",\"system_memory_available_mib\":" << p.systemMemoryAvailableMiB
-                << ",\"gpu_util_pct\":" << p.gpuUtilPct
-                << ",\"gpu_mem_util_pct\":" << p.gpuMemoryUtilPct
-                << ",\"vram_used_mib\":" << p.vramUsedMiB
-                << ",\"vram_total_mib\":" << p.vramTotalMiB
-                << ",\"gpu_temp_c\":" << p.gpuTempC
-                << ",\"gpu_graphics_mhz\":" << p.gpuGraphicsMHz
-                << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
-                << ",\"gpu_power_w\":" << p.gpuPowerW
-                << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
-                << "}";
-        };
-
-    const auto writeTelemetryDeltaJson =
-        [&](const StutterTelemetryDelta& d) {
-            if (!d.valid) {
-                json << "null";
-                return;
-            }
-
-            json
-                << "{"
-                << "\"process_cpu_pct\":" << d.processCpuPct
-                << ",\"system_cpu_pct\":" << d.systemCpuPct
-                << ",\"process_read_mib_s\":" << d.processReadMiBps
-                << ",\"process_write_mib_s\":" << d.processWriteMiBps
-                << ",\"gpu_util_pct\":" << d.gpuUtilPct
-                << ",\"gpu_graphics_mhz\":" << d.gpuGraphicsMHz
-                << ",\"gpu_power_w\":" << d.gpuPowerW
-                << "}";
-        };
-
-    for (std::size_t i = 0;
-         i < result.events.size();
-         ++i) {
-
+    for (std::size_t i = 0; i < result.events.size(); ++i) {
         const auto& e = result.events[i];
 
-        json
-            << "    {\n"
-            << "      \"timestamp\": \""
-            << jsonEscape(e.timestamp)
-            << "\",\n"
-            << std::fixed
-            << std::setprecision(3)
-            << "      \"frame_time_ms\": "
-            << e.frameTimeMs
-            << ",\n"
-            << "      \"cpu_busy_ms\": "
-            << e.cpuBusyMs
-            << ",\n"
-            << "      \"cpu_wait_ms\": "
-            << e.cpuWaitMs
-            << ",\n"
-            << "      \"gpu_time_ms\": "
-            << e.gpuTimeMs
-            << ",\n"
-            << "      \"gpu_busy_ms\": "
-            << e.gpuBusyMs
-            << ",\n"
-            << "      \"gpu_wait_ms\": "
-            << e.gpuWaitMs
-            << ",\n"
-            << "      \"present_mode\": \""
-            << jsonEscape(e.presentMode)
-            << "\",\n"
-            << "      \"telemetry_matched\": "
-            << (e.telemetryMatched ? "true" : "false");
+        json << "    {\n";
+        json << "      \"timestamp\": \"" << jsonEscape(e.timestamp) << "\",\n";
+        json << "      \"frame_time_ms\": " << e.frameTimeMs << ",\n";
+        json << "      \"cpu_busy_ms\": " << e.cpuBusyMs << ",\n";
+        json << "      \"cpu_wait_ms\": " << e.cpuWaitMs << ",\n";
+        json << "      \"gpu_time_ms\": " << e.gpuTimeMs << ",\n";
+        json << "      \"gpu_busy_ms\": " << e.gpuBusyMs << ",\n";
+        json << "      \"gpu_wait_ms\": " << e.gpuWaitMs << ",\n";
+        json << "      \"present_mode\": \"" << jsonEscape(e.presentMode) << "\",\n";
+        json << "      \"telemetry_matched\": "
+             << (e.telemetryMatched ? "true" : "false");
 
         if (e.telemetryMatched) {
-            json
-                << ",\n"
-                << "      \"telemetry_delta_ms\": "
-                << e.telemetryDeltaMs
-                << ",\n"
-                << "      \"process_cpu_pct\": "
-                << e.processCpuPct
-                << ",\n"
-                << "      \"system_cpu_pct\": "
-                << e.systemCpuPct
-                << ",\n"
-                << "      \"working_set_mib\": "
-                << e.workingSetMiB
-                << ",\n"
-                << "      \"private_usage_mib\": "
-                << e.privateUsageMiB
-                << ",\n"
-                << "      \"process_read_mib_s\": "
-                << e.processReadMiBps
-                << ",\n"
-                << "      \"process_write_mib_s\": "
-                << e.processWriteMiBps
-                << ",\n"
-                << "      \"system_memory_load_pct\": "
-                << e.systemMemoryLoadPct
-                << ",\n"
-                << "      \"system_memory_available_mib\": "
-                << e.systemMemoryAvailableMiB
-                << ",\n"
-                << "      \"gpu_util_pct\": "
-                << e.gpuUtilPct
-                << ",\n"
-                << "      \"gpu_mem_util_pct\": "
-                << e.gpuMemoryUtilPct
-                << ",\n"
-                << "      \"vram_used_mib\": "
-                << e.vramUsedMiB
-                << ",\n"
-                << "      \"vram_total_mib\": "
-                << e.vramTotalMiB
-                << ",\n"
-                << "      \"gpu_temp_c\": "
-                << e.gpuTempC
-                << ",\n"
-                << "      \"gpu_graphics_mhz\": "
-                << e.gpuGraphicsMHz
-                << ",\n"
-                << "      \"gpu_memory_mhz\": "
-                << e.gpuMemoryMHz
-                << ",\n"
-                << "      \"gpu_power_w\": "
-                << e.gpuPowerW
-                << ",\n"
-                << "      \"gpu_power_limit_w\": "
-                << e.gpuPowerLimitW
-                << ",\n";
+            json << ",\n";
+            json << "      \"telemetry_delta_ms\": " << e.telemetryDeltaMs << ",\n";
+            json << "      \"process_cpu_pct\": " << e.processCpuPct << ",\n";
+            json << "      \"system_cpu_pct\": " << e.systemCpuPct << ",\n";
+            json << "      \"working_set_mib\": " << e.workingSetMiB << ",\n";
+            json << "      \"private_usage_mib\": " << e.privateUsageMiB << ",\n";
+            json << "      \"process_read_mib_s\": " << e.processReadMiBps << ",\n";
+            json << "      \"process_write_mib_s\": " << e.processWriteMiBps << ",\n";
+            json << "      \"system_memory_load_pct\": " << e.systemMemoryLoadPct << ",\n";
+            json << "      \"system_memory_available_mib\": " << e.systemMemoryAvailableMiB << ",\n";
+            json << "      \"gpu_util_pct\": " << e.gpuUtilPct << ",\n";
+            json << "      \"gpu_mem_util_pct\": " << e.gpuMemoryUtilPct << ",\n";
+            json << "      \"vram_used_mib\": " << e.vramUsedMiB << ",\n";
+            json << "      \"vram_total_mib\": " << e.vramTotalMiB << ",\n";
+            json << "      \"gpu_temp_c\": " << e.gpuTempC << ",\n";
+            json << "      \"gpu_graphics_mhz\": " << e.gpuGraphicsMHz << ",\n";
+            json << "      \"gpu_memory_mhz\": " << e.gpuMemoryMHz << ",\n";
+            json << "      \"gpu_power_w\": " << e.gpuPowerW << ",\n";
+            json << "      \"gpu_power_limit_w\": " << e.gpuPowerLimitW << ",\n";
         } else {
             json << ",\n";
         }
 
-        json << "      \"telemetry_window\": {"
-             << "\"before\":";
-        writeTelemetryPointJson(e.before);
+        json << "      \"telemetry_window\": {\"before\":";
+        writeTelemetryPointJson(json, e.before);
         json << ",\"nearest\":";
-        writeTelemetryPointJson(e.nearest);
+        writeTelemetryPointJson(json, e.nearest);
         json << ",\"after\":";
-        writeTelemetryPointJson(e.after);
-        json << "},\\n";
+        writeTelemetryPointJson(json, e.after);
+        json << "},\n";
 
-        json << "      \"telemetry_deltas\": {"
-             << "\"before_to_nearest\":";
-        writeTelemetryDeltaJson(e.beforeToNearest);
+        json << "      \"telemetry_deltas\": {\"before_to_nearest\":";
+        writeTelemetryDeltaJson(json, e.beforeToNearest);
         json << ",\"nearest_to_after\":";
-        writeTelemetryDeltaJson(e.nearestToAfter);
+        writeTelemetryDeltaJson(json, e.nearestToAfter);
         json << ",\"before_to_after\":";
-        writeTelemetryDeltaJson(e.beforeToAfter);
-        json << "},\\n";
+        writeTelemetryDeltaJson(json, e.beforeToAfter);
+        json << "},\n";
 
         json << "      \"signals\": [";
         for (std::size_t signalIndex = 0;
@@ -994,166 +839,104 @@ bool writeStutterCorrelationReport(
         }
         json << "]\n";
 
-        json
-            << "    }"
-            << (i + 1 < result.events.size()
-                    ? ","
-                    : "")
-            << "\n";
+        json << "    }" << (i + 1 < result.events.size() ? "," : "") << "\n";
     }
 
-    json
-        << "  ]\n"
-        << "}\n";
+    json << "  ]\n";
+    json << "}\n";
 
-    std::ofstream text(
-        textOutput,
-        std::ios::binary |
-        std::ios::trunc);
-
-    if (!text) {
+    if (!json) {
         if (error)
-            *error = L"Cannot create stutter_events.txt";
-
+            *error = L"Failed while writing stutter_events.json";
         return false;
     }
 
-    text
-        << "Bodycam Diagnostics stutter correlation\n"
-        << "Threshold: 100.00 ms\n"
-        << "Events: "
-        << result.events.size()
-        << "\n";
+    std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
+    if (!text) {
+        if (error)
+            *error = L"Cannot create stutter_events.txt";
+        return false;
+    }
 
-    for (std::size_t i = 0;
-         i < result.events.size();
-         ++i) {
+    text << std::fixed << std::setprecision(2);
+    text << "Bodycam Diagnostics stutter correlation\n";
+    text << "Threshold: 100.00 ms\n";
+    text << "Telemetry window: before=start previous, nearest=start nearest, after=end next\n";
+    text << "Events: " << result.events.size() << "\n";
 
+    for (std::size_t i = 0; i < result.events.size(); ++i) {
         const auto& e = result.events[i];
 
-        text
-            << "\nEvent "
-            << (i + 1)
-            << "\n"
-            << "Time: "
-            << e.timestamp
-            << "\n"
-            << std::fixed
-            << std::setprecision(2)
-            << "Frametime: "
-            << e.frameTimeMs
-            << " ms\n"
-            << "CPU busy / wait: "
-            << e.cpuBusyMs
-            << " / "
-            << e.cpuWaitMs
-            << " ms\n"
-            << "GPU time / busy / wait: "
-            << e.gpuTimeMs
-            << " / "
-            << e.gpuBusyMs
-            << " / "
-            << e.gpuWaitMs
-            << " ms\n"
-            << "Present mode: "
-            << e.presentMode
-            << "\n";
+        text << "\nEvent " << (i + 1) << "\n";
+        text << "Time: " << e.timestamp << "\n";
+        text << "Frametime: " << e.frameTimeMs << " ms\n";
+        text << "CPU busy / wait: "
+             << e.cpuBusyMs << " / " << e.cpuWaitMs << " ms\n";
+        text << "GPU time / busy / wait: "
+             << e.gpuTimeMs << " / "
+             << e.gpuBusyMs << " / "
+             << e.gpuWaitMs << " ms\n";
+        text << "Present mode: " << e.presentMode << "\n";
 
         if (e.telemetryMatched) {
-            text
-                << "Telemetry delta: "
-                << e.telemetryDeltaMs
-                << " ms\n"
-                << "Bodycam CPU / system CPU: "
-                << e.processCpuPct
-                << " / "
-                << e.systemCpuPct
-                << " %\n"
-                << "Bodycam working/private memory: "
-                << e.workingSetMiB
-                << " / "
-                << e.privateUsageMiB
-                << " MiB\n"
-                << "Bodycam read/write: "
-                << e.processReadMiBps
-                << " / "
-                << e.processWriteMiBps
-                << " MiB/s\n"
-                << "System memory load / available: "
-                << e.systemMemoryLoadPct
-                << " % / "
-                << e.systemMemoryAvailableMiB
-                << " MiB\n"
-                << "GPU util / memory util: "
-                << e.gpuUtilPct
-                << " / "
-                << e.gpuMemoryUtilPct
-                << " %\n"
-                << "VRAM used / total: "
-                << e.vramUsedMiB
-                << " / "
-                << e.vramTotalMiB
-                << " MiB\n"
-                << "GPU temp: "
-                << e.gpuTempC
-                << " C\n"
-                << "GPU graphics / memory clock: "
-                << e.gpuGraphicsMHz
-                << " / "
-                << e.gpuMemoryMHz
-                << " MHz\n"
-                << "GPU power / limit: "
-                << e.gpuPowerW
-                << " / "
-                << e.gpuPowerLimitW
-                << " W\n";
+            text << "Telemetry delta: " << e.telemetryDeltaMs << " ms\n";
+            text << "Bodycam CPU / system CPU: "
+                 << e.processCpuPct << " / " << e.systemCpuPct << " %\n";
+            text << "Bodycam working/private memory: "
+                 << e.workingSetMiB << " / "
+                 << e.privateUsageMiB << " MiB\n";
+            text << "Bodycam read/write: "
+                 << e.processReadMiBps << " / "
+                 << e.processWriteMiBps << " MiB/s\n";
+            text << "System memory load / available: "
+                 << e.systemMemoryLoadPct << " % / "
+                 << e.systemMemoryAvailableMiB << " MiB\n";
+            text << "GPU util / memory util: "
+                 << e.gpuUtilPct << " / "
+                 << e.gpuMemoryUtilPct << " %\n";
+            text << "VRAM used / total: "
+                 << e.vramUsedMiB << " / "
+                 << e.vramTotalMiB << " MiB\n";
+            text << "GPU temp: " << e.gpuTempC << " C\n";
+            text << "GPU graphics / memory clock: "
+                 << e.gpuGraphicsMHz << " / "
+                 << e.gpuMemoryMHz << " MHz\n";
+            text << "GPU power / limit: "
+                 << e.gpuPowerW << " / "
+                 << e.gpuPowerLimitW << " W\n";
         } else {
-            text
-                << "Telemetry: no sample within 1500 ms\n";
+            text << "Telemetry: no sample within 1500 ms\n";
         }
 
         text << "Telemetry window [before / nearest / after]: ";
-        const auto writePointText =
-            [&](const StutterTelemetryPoint& p) {
-                if (!p.valid) {
-                    text << "none";
-                    return;
-                }
-                text
-                    << p.offsetMs << " ms, GPU "
-                    << p.gpuUtilPct << " %, CPU "
-                    << p.processCpuPct << " %, IO "
-                    << p.processReadMiBps << "/"
-                    << p.processWriteMiBps << " MiB/s";
-            };
-        writePointText(e.before);
+        writePointText(text, e.before);
         text << " / ";
-        writePointText(e.nearest);
+        writePointText(text, e.nearest);
         text << " / ";
-        writePointText(e.after);
-        text << "\\n";
+        writePointText(text, e.after);
+        text << "\n";
 
         text << "Telemetry deltas [before->nearest / nearest->after]: ";
         if (e.beforeToNearest.valid) {
-            text
-                << "GPU " << e.beforeToNearest.gpuUtilPct << " %, "
-                << "clock " << e.beforeToNearest.gpuGraphicsMHz << " MHz, "
-                << "power " << e.beforeToNearest.gpuPowerW << " W, "
-                << "read " << e.beforeToNearest.processReadMiBps << " MiB/s";
+            text << "GPU " << e.beforeToNearest.gpuUtilPct << " %, "
+                 << "clock " << e.beforeToNearest.gpuGraphicsMHz << " MHz, "
+                 << "power " << e.beforeToNearest.gpuPowerW << " W, "
+                 << "read " << e.beforeToNearest.processReadMiBps << " MiB/s";
         } else {
             text << "none";
         }
+
         text << " / ";
+
         if (e.nearestToAfter.valid) {
-            text
-                << "GPU " << e.nearestToAfter.gpuUtilPct << " %, "
-                << "clock " << e.nearestToAfter.gpuGraphicsMHz << " MHz, "
-                << "power " << e.nearestToAfter.gpuPowerW << " W, "
-                << "read " << e.nearestToAfter.processReadMiBps << " MiB/s";
+            text << "GPU " << e.nearestToAfter.gpuUtilPct << " %, "
+                 << "clock " << e.nearestToAfter.gpuGraphicsMHz << " MHz, "
+                 << "power " << e.nearestToAfter.gpuPowerW << " W, "
+                 << "read " << e.nearestToAfter.processReadMiBps << " MiB/s";
         } else {
             text << "none";
         }
-        text << "\\n";
+        text << "\n";
 
         text << "Signals: ";
         if (e.signals.empty()) {
@@ -1168,6 +951,12 @@ bool writeStutterCorrelationReport(
             }
             text << "\n";
         }
+    }
+
+    if (!text) {
+        if (error)
+            *error = L"Failed while writing stutter_events.txt";
+        return false;
     }
 
     return true;
