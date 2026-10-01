@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <sstream>
+
 namespace {
 std::wstring jsonEscape(const std::wstring& text) {
     std::wstring out;
@@ -45,6 +47,48 @@ std::vector<std::wstring> displayAdapters() {
     }
     return names;
 }
+
+std::vector<std::wstring> activeDisplaysJson() {
+    std::vector<std::wstring> items;
+
+    DISPLAY_DEVICEW dd{};
+    dd.cb = sizeof(dd);
+
+    for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0); ++i) {
+        if ((dd.StateFlags & DISPLAY_DEVICE_ACTIVE) == 0 ||
+            (dd.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) != 0) {
+            dd = {};
+            dd.cb = sizeof(dd);
+            continue;
+        }
+
+        DEVMODEW mode{};
+        mode.dmSize = sizeof(mode);
+
+        if (EnumDisplaySettingsExW(
+                dd.DeviceName,
+                ENUM_CURRENT_SETTINGS,
+                &mode,
+                0)) {
+            std::wstringstream ss;
+            ss << L"{"
+               << L"\"device\":\"" << jsonEscape(dd.DeviceName) << L"\","
+               << L"\"name\":\"" << jsonEscape(dd.DeviceString) << L"\","
+               << L"\"width\":" << mode.dmPelsWidth << L","
+               << L"\"height\":" << mode.dmPelsHeight << L","
+               << L"\"refresh_hz\":" << mode.dmDisplayFrequency << L","
+               << L"\"primary\":"
+               << ((dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) ? L"true" : L"false")
+               << L"}";
+            items.push_back(ss.str());
+        }
+
+        dd = {};
+        dd.cb = sizeof(dd);
+    }
+
+    return items;
+}
 }
 
 bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
@@ -60,6 +104,10 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     const auto displayVersion = readRegString(HKEY_LOCAL_MACHINE, key, L"DisplayVersion");
     const auto build = readRegString(HKEY_LOCAL_MACHINE, key, L"CurrentBuildNumber");
     const auto gpus = displayAdapters();
+    const auto displays = activeDisplaysJson();
+
+    const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
     std::wofstream out(outputFile, std::ios::out | std::ios::trunc);
     if (!out) return false;
@@ -75,7 +123,18 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
         if (i) out << L", ";
         out << L"\"" << jsonEscape(gpus[i]) << L"\"";
     }
-    out << L"]\n";
+    out << L"],\n";
+    out << L"  \"displays\": [";
+    for (size_t i = 0; i < displays.size(); ++i) {
+        if (i) out << L", ";
+        out << displays[i];
+    }
+    out << L"],\n";
+    out << L"  \"virtual_desktop\": {\"width\": "
+        << virtualWidth
+        << L", \"height\": "
+        << virtualHeight
+        << L"}\n";
     out << L"}\n";
     return true;
 }
