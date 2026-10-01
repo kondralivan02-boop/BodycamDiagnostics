@@ -25,6 +25,7 @@
 #include "SessionMirror.h"
 #include "SystemSnapshot.h"
 #include "TelemetrySampler.h"
+#include "TestValidator.h"
 #include "ToolPreflight.h"
 
 namespace {
@@ -83,6 +84,8 @@ std::filesystem::path gLastReportPath;
 
 DWORD gGamePid = 0;
 bool gRunning = false;
+bool gGameExitedUnexpectedly = false;
+std::chrono::steady_clock::time_point gSessionStartedAt{};
 unsigned gIdleTick = 0;
 
 std::filesystem::path appDir() {
@@ -249,6 +252,8 @@ void startSession() {
     }
 
     gGamePid = bodycam.pid;
+    gGameExitedUnexpectedly = false;
+    gSessionStartedAt = std::chrono::steady_clock::now();
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
@@ -374,6 +379,9 @@ void stopSession() {
     }
 
     const auto sessionPath = gSession->sessionPath();
+    const double sessionDurationSeconds =
+        std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - gSessionStartedAt).count();
 
     std::wstring muxError;
     if (muxSessionVideoWithAudio(
@@ -408,6 +416,32 @@ void stopSession() {
         }
     } else {
         logEvent(L"Метрики недоступны  •  " + summary.error);
+    }
+
+    const auto validation = validateTestSession(
+        sessionPath,
+        summary,
+        sessionDurationSeconds,
+        gGameExitedUnexpectedly);
+
+    std::wstring validationError;
+    if (writeTestValidationReport(
+            validation,
+            sessionPath / L"validation.json",
+            sessionPath / L"validation.txt",
+            &validationError)) {
+        if (validation.valid) {
+            logEvent(L"Проверка теста  •  VALID");
+        } else {
+            logEvent(
+                L"Проверка теста  •  INVALID  •  " +
+                std::to_wstring(validation.issues.size()) +
+                L" issue(s)");
+            for (const auto& issue : validation.issues)
+                logEvent(L"Validation  •  " + issue);
+        }
+    } else {
+        logEvent(L"Ошибка validation report  •  " + validationError);
     }
 
     gSession->stop();
@@ -732,6 +766,7 @@ void updateLiveOverlay() {
 
     const auto bodycam = findProcessByName(L"Bodycam-Win64-Shipping.exe");
     if (!bodycam.pid || bodycam.pid != gGamePid) {
+        gGameExitedUnexpectedly = true;
         logEvent(
             L"Bodycam завершился во время теста  •  возможный crash/exit");
         stopSession();
