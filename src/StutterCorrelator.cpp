@@ -446,6 +446,35 @@ const TelemetryRow* nearestTelemetry(
 }
 
 
+
+StutterTelemetryDelta telemetryDelta(
+    const StutterTelemetryPoint& from,
+    const StutterTelemetryPoint& to) {
+
+    StutterTelemetryDelta delta{};
+    if (!from.valid || !to.valid)
+        return delta;
+
+    delta.valid = true;
+    delta.processCpuPct = to.processCpuPct - from.processCpuPct;
+    delta.systemCpuPct = to.systemCpuPct - from.systemCpuPct;
+    delta.processReadMiBps = to.processReadMiBps - from.processReadMiBps;
+    delta.processWriteMiBps = to.processWriteMiBps - from.processWriteMiBps;
+    delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
+    delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
+    delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
+    return delta;
+}
+
+void calculateTelemetryDeltas(StutterEvent& event) {
+    event.beforeToNearest =
+        telemetryDelta(event.before, event.nearest);
+    event.nearestToAfter =
+        telemetryDelta(event.nearest, event.after);
+    event.beforeToAfter =
+        telemetryDelta(event.before, event.after);
+}
+
 void classifySignals(StutterEvent& event) {
     const double frame = event.frameTimeMs;
 
@@ -467,6 +496,36 @@ void classifySignals(StutterEvent& event) {
     if (event.gpuWaitMs >= 100.0 &&
         event.gpuWaitMs >= frame * 0.25) {
         event.signals.push_back("GPU_WAIT_HIGH");
+    }
+
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.gpuUtilPct <= -30.0) {
+        event.signals.push_back("GPU_UTIL_DROP_AROUND_STALL");
+    }
+
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.gpuGraphicsMHz <= -500.0) {
+        event.signals.push_back("GPU_CLOCK_DROP_AROUND_STALL");
+    }
+
+    if (event.nearestToAfter.valid &&
+        event.nearestToAfter.gpuUtilPct >= 30.0) {
+        event.signals.push_back("GPU_UTIL_RECOVERY_AFTER_STALL");
+    }
+
+    if (event.nearestToAfter.valid &&
+        event.nearestToAfter.gpuGraphicsMHz >= 500.0) {
+        event.signals.push_back("GPU_CLOCK_RECOVERY_AFTER_STALL");
+    }
+
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.processReadMiBps >= 50.0) {
+        event.signals.push_back("BODYCAM_READ_SPIKE_AROUND_STALL");
+    }
+
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.processWriteMiBps >= 50.0) {
+        event.signals.push_back("BODYCAM_WRITE_SPIKE_AROUND_STALL");
     }
 
     if (!event.telemetryMatched)
@@ -714,6 +773,7 @@ StutterCorrelationResult correlateStutterEvents(
             telemetryRows,
             telemetryTargetTime100ns);
 
+        calculateTelemetryDeltas(event);
         classifySignals(event);
 
         result.events.push_back(std::move(event));
@@ -786,6 +846,25 @@ bool writeStutterCorrelationReport(
                 << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
                 << ",\"gpu_power_w\":" << p.gpuPowerW
                 << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
+                << "}";
+        };
+
+    const auto writeTelemetryDeltaJson =
+        [&](const StutterTelemetryDelta& d) {
+            if (!d.valid) {
+                json << "null";
+                return;
+            }
+
+            json
+                << "{"
+                << "\"process_cpu_pct\":" << d.processCpuPct
+                << ",\"system_cpu_pct\":" << d.systemCpuPct
+                << ",\"process_read_mib_s\":" << d.processReadMiBps
+                << ",\"process_write_mib_s\":" << d.processWriteMiBps
+                << ",\"gpu_util_pct\":" << d.gpuUtilPct
+                << ",\"gpu_graphics_mhz\":" << d.gpuGraphicsMHz
+                << ",\"gpu_power_w\":" << d.gpuPowerW
                 << "}";
         };
 
@@ -894,6 +973,15 @@ bool writeStutterCorrelationReport(
         writeTelemetryPointJson(e.nearest);
         json << ",\"after\":";
         writeTelemetryPointJson(e.after);
+        json << "},\\n";
+
+        json << "      \"telemetry_deltas\": {"
+             << "\"before_to_nearest\":";
+        writeTelemetryDeltaJson(e.beforeToNearest);
+        json << ",\"nearest_to_after\":";
+        writeTelemetryDeltaJson(e.nearestToAfter);
+        json << ",\"before_to_after\":";
+        writeTelemetryDeltaJson(e.beforeToAfter);
         json << "},\\n";
 
         json << "      \"signals\": [";
@@ -1043,6 +1131,28 @@ bool writeStutterCorrelationReport(
         writePointText(e.nearest);
         text << " / ";
         writePointText(e.after);
+        text << "\\n";
+
+        text << "Telemetry deltas [before->nearest / nearest->after]: ";
+        if (e.beforeToNearest.valid) {
+            text
+                << "GPU " << e.beforeToNearest.gpuUtilPct << " %, "
+                << "clock " << e.beforeToNearest.gpuGraphicsMHz << " MHz, "
+                << "power " << e.beforeToNearest.gpuPowerW << " W, "
+                << "read " << e.beforeToNearest.processReadMiBps << " MiB/s";
+        } else {
+            text << "none";
+        }
+        text << " / ";
+        if (e.nearestToAfter.valid) {
+            text
+                << "GPU " << e.nearestToAfter.gpuUtilPct << " %, "
+                << "clock " << e.nearestToAfter.gpuGraphicsMHz << " MHz, "
+                << "power " << e.nearestToAfter.gpuPowerW << " W, "
+                << "read " << e.nearestToAfter.processReadMiBps << " MiB/s";
+        } else {
+            text << "none";
+        }
         text << "\\n";
 
         text << "Signals: ";
