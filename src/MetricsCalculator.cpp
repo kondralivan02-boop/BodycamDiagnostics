@@ -253,6 +253,9 @@ MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
         frameTimes.begin(), frameTimes.end(), [](double ms) { return ms >= 50.0; }));
     result.stuttersOver100Ms = static_cast<std::size_t>(std::count_if(
         frameTimes.begin(), frameTimes.end(), [](double ms) { return ms >= 100.0; }));
+    result.stuttersOver250Ms = static_cast<std::size_t>(std::count_if(
+        frameTimes.begin(), frameTimes.end(), [](double ms) { return ms >= 250.0; }));
+    result.maxFrameTimeMs = *std::max_element(frameTimes.begin(), frameTimes.end());
 
     std::sort(frameTimes.begin(), frameTimes.end());
     result.p50FrameTimeMs = percentileSorted(frameTimes, 0.50);
@@ -295,7 +298,9 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "  \"p99_frame_time_ms\": " << s.p99FrameTimeMs << ",\n"
          << "  \"p999_frame_time_ms\": " << s.p999FrameTimeMs << ",\n"
          << "  \"stutters_over_50ms\": " << s.stuttersOver50Ms << ",\n"
-         << "  \"stutters_over_100ms\": " << s.stuttersOver100Ms << "\n"
+         << "  \"stutters_over_100ms\": " << s.stuttersOver100Ms << ",\n"
+         << "  \"stutters_over_250ms\": " << s.stuttersOver250Ms << ",\n"
+         << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << "\n"
          << "}\n";
     json.close();
 
@@ -319,7 +324,9 @@ bool writeMetricsReport(const MetricsSummary& s,
          << s.p50FrameTimeMs << " / " << s.p95FrameTimeMs << " / "
          << s.p99FrameTimeMs << " / " << s.p999FrameTimeMs << " ms\n"
          << "Stutters >50 ms: " << s.stuttersOver50Ms << "\n"
-         << "Stutters >100 ms: " << s.stuttersOver100Ms << "\n";
+         << "Stutters >100 ms: " << s.stuttersOver100Ms << "\n"
+         << "Stutters >250 ms: " << s.stuttersOver250Ms << "\n"
+         << "Maximum frametime: " << s.maxFrameTimeMs << " ms\n";
 
     return true;
 }
