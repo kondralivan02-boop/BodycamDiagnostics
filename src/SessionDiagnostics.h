@@ -26,6 +26,7 @@ struct DiagnosticTopEvent {
     double gpuGraphicsMHz = 0.0;
     double gpuPowerW = 0.0;
     std::vector<std::string> signals;
+    std::vector<std::string> diagnosticIndicators;
 };
 
 struct SessionDiagnosticsResult {
@@ -47,6 +48,7 @@ struct SessionDiagnosticsResult {
     std::size_t telemetryMatchedStutters = 0;
 
     std::vector<DiagnosticSignalCount> signalCounts;
+    std::vector<DiagnosticSignalCount> diagnosticIndicatorCounts;
     std::vector<DiagnosticTopEvent> topEvents;
     std::vector<std::wstring> validationIssues;
     std::vector<std::wstring> diagnosticLimitations;

@@ -115,6 +115,7 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
     result.performanceFindings = performance.findings;
 
     std::map<std::string, std::size_t> signalCounts;
+    std::map<std::string, std::size_t> diagnosticIndicatorCounts;
     std::vector<const StutterEvent*> sortedEvents;
     sortedEvents.reserve(stutters.events.size());
 
@@ -130,6 +131,9 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
         for (const auto& signal : event.signals)
             ++signalCounts[signal];
 
+        for (const auto& indicator : event.diagnosticIndicators)
+            ++diagnosticIndicatorCounts[indicator];
+
         sortedEvents.push_back(&event);
     }
 
@@ -140,6 +144,19 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
     std::sort(
         result.signalCounts.begin(),
         result.signalCounts.end(),
+        [](const DiagnosticSignalCount& a, const DiagnosticSignalCount& b) {
+            if (a.count != b.count)
+                return a.count > b.count;
+            return a.signal < b.signal;
+        });
+
+    result.diagnosticIndicatorCounts.reserve(diagnosticIndicatorCounts.size());
+    for (const auto& [indicator, count] : diagnosticIndicatorCounts)
+        result.diagnosticIndicatorCounts.push_back({indicator, count});
+
+    std::sort(
+        result.diagnosticIndicatorCounts.begin(),
+        result.diagnosticIndicatorCounts.end(),
         [](const DiagnosticSignalCount& a, const DiagnosticSignalCount& b) {
             if (a.count != b.count)
                 return a.count > b.count;
@@ -172,6 +189,7 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
         top.gpuGraphicsMHz = event.gpuGraphicsMHz;
         top.gpuPowerW = event.gpuPowerW;
         top.signals = event.signals;
+        top.diagnosticIndicators = event.diagnosticIndicators;
 
         result.topEvents.push_back(std::move(top));
     }
@@ -245,6 +263,27 @@ bool writeSessionDiagnosticsReport(
 
     json << "  ],\n";
 
+    json << "  \"diagnostic_indicator_counts\": [";
+    if (!result.diagnosticIndicatorCounts.empty())
+        json << "\n";
+
+    for (std::size_t i = 0; i < result.diagnosticIndicatorCounts.size(); ++i) {
+        const auto& indicator = result.diagnosticIndicatorCounts[i];
+
+        json << "    {\"indicator\":\""
+             << jsonEscape(indicator.signal)
+             << "\",\"count\":"
+             << indicator.count
+             << "}";
+
+        if (i + 1 < result.diagnosticIndicatorCounts.size())
+            json << ",";
+
+        json << "\n";
+    }
+
+    json << "  ],\n";
+
     json << "  \"top_stutters\": [";
     if (!result.topEvents.empty())
         json << "\n";
@@ -274,6 +313,14 @@ bool writeSessionDiagnosticsReport(
                 json << ",";
         }
 
+        json << "],\"diagnostic_indicators\":[";
+
+        for (std::size_t d = 0; d < event.diagnosticIndicators.size(); ++d) {
+            json << "\"" << jsonEscape(event.diagnosticIndicators[d]) << "\"";
+            if (d + 1 < event.diagnosticIndicators.size())
+                json << ",";
+        }
+
         json << "]}";
 
         if (i + 1 < result.topEvents.size())
@@ -297,7 +344,7 @@ bool writeSessionDiagnosticsReport(
     json << ",\n";
 
     json << "  \"interpretation\": "
-         << "\"Signals are diagnostic indicators and do not by themselves prove root cause.\"\n";
+         << "\"Low-level signals and diagnostic indicators are correlations; they do not by themselves prove root cause.\"\n";
     json << "}\n";
 
     if (!json) {
@@ -350,6 +397,14 @@ bool writeSessionDiagnosticsReport(
             text << signal.count << " x " << signal.signal << "\n";
     }
 
+    text << "\nDIAGNOSTIC INDICATOR COUNTS\n";
+    if (result.diagnosticIndicatorCounts.empty()) {
+        text << "none\n";
+    } else {
+        for (const auto& indicator : result.diagnosticIndicatorCounts)
+            text << indicator.count << " x " << indicator.signal << "\n";
+    }
+
     text << "\nTOP STUTTERS\n";
     if (result.topEvents.empty()) {
         text << "none\n";
@@ -369,6 +424,15 @@ bool writeSessionDiagnosticsReport(
                     if (i > 0)
                         text << ",";
                     text << event.signals[i];
+                }
+            }
+
+            if (!event.diagnosticIndicators.empty()) {
+                text << " | indicators=";
+                for (std::size_t i = 0; i < event.diagnosticIndicators.size(); ++i) {
+                    if (i > 0)
+                        text << ",";
+                    text << event.diagnosticIndicators[i];
                 }
             }
 
@@ -392,7 +456,7 @@ bool writeSessionDiagnosticsReport(
             text << "- " << wideToUtf8(finding) << "\n";
     }
 
-    text << "\nInterpretation: signals are diagnostic indicators; "
+    text << "\nInterpretation: low-level signals and diagnostic indicators are correlations; "
             "they do not by themselves prove root cause.\n";
 
     if (!text) {

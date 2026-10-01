@@ -659,10 +659,10 @@ void writePointText(
 }
 
 void classifyStutterIndicators(StutterEvent& event) {
-    const auto addUnique = [&](const char* signal) {
-        if (std::find(event.signals.begin(), event.signals.end(), signal) ==
-            event.signals.end()) {
-            event.signals.emplace_back(signal);
+    const auto addUnique = [&](const char* indicator) {
+        if (std::find(event.diagnosticIndicators.begin(), event.diagnosticIndicators.end(), indicator) ==
+            event.diagnosticIndicators.end()) {
+            event.diagnosticIndicators.emplace_back(indicator);
         }
     };
 
@@ -947,6 +947,9 @@ bool writeStutterCorrelationReport(
         json << "      \"gpu_busy_ms\": " << e.gpuBusyMs << ",\n";
         json << "      \"gpu_wait_ms\": " << e.gpuWaitMs << ",\n";
         json << "      \"present_mode\": \"" << jsonEscape(e.presentMode) << "\",\n";
+        json << "      \"previous_present_mode\": \"" << jsonEscape(e.previousPresentMode) << "\",\n";
+        json << "      \"present_mode_changed\": "
+             << (e.presentModeChanged ? "true" : "false") << ",\n";
         json << "      \"telemetry_matched\": "
              << (e.telemetryMatched ? "true" : "false");
 
@@ -998,6 +1001,16 @@ bool writeStutterCorrelationReport(
                 json << ", ";
             json << "\"" << jsonEscape(e.signals[signalIndex]) << "\"";
         }
+        json << "],\n";
+
+        json << "      \"diagnostic_indicators\": [";
+        for (std::size_t indicatorIndex = 0;
+             indicatorIndex < e.diagnosticIndicators.size();
+             ++indicatorIndex) {
+            if (indicatorIndex)
+                json << ", ";
+            json << "\"" << jsonEscape(e.diagnosticIndicators[indicatorIndex]) << "\"";
+        }
         json << "]\n";
 
         json << "    }" << (i + 1 < result.events.size() ? "," : "") << "\n";
@@ -1048,7 +1061,11 @@ bool writeStutterCorrelationReport(
              << e.gpuTimeMs << " / "
              << e.gpuBusyMs << " / "
              << e.gpuWaitMs << " ms\n";
-        text << "Present mode: " << e.presentMode << "\n";
+        text << "Present mode: " << e.presentMode;
+        if (!e.previousPresentMode.empty())
+            text << " (previous: " << e.previousPresentMode
+                 << ", changed=" << (e.presentModeChanged ? "yes" : "no") << ")";
+        text << "\n";
 
         if (e.telemetryMatched) {
             text << "Telemetry delta: " << e.telemetryDeltaMs << " ms\n";
@@ -1120,6 +1137,20 @@ bool writeStutterCorrelationReport(
                 if (signalIndex)
                     text << ", ";
                 text << e.signals[signalIndex];
+            }
+            text << "\n";
+        }
+
+        text << "Diagnostic indicators: ";
+        if (e.diagnosticIndicators.empty()) {
+            text << "none\n";
+        } else {
+            for (std::size_t indicatorIndex = 0;
+                 indicatorIndex < e.diagnosticIndicators.size();
+                 ++indicatorIndex) {
+                if (indicatorIndex)
+                    text << ", ";
+                text << e.diagnosticIndicators[indicatorIndex];
             }
             text << "\n";
         }

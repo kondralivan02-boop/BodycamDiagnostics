@@ -79,6 +79,7 @@ struct StutterEvent {
     StutterTelemetryDelta nearestToAfter;
     StutterTelemetryDelta beforeToAfter;
     std::vector<std::string> signals;
+    std::vector<std::string> diagnosticIndicators;
 };
 
 struct StutterCorrelationResult {
