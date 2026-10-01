@@ -107,6 +107,12 @@ bool DiagnosticsOverlay::create(HINSTANCE instance) {
     if (!hwnd_) return false;
 
     SetLayeredWindowAttributes(hwnd_, 0, 238, LWA_ALPHA);
+
+    HRGN region = CreateRoundRectRgn(
+        0, 0, kOverlayWidth + 1, kOverlayHeight + 1, 16, 16);
+    if (region)
+        SetWindowRgn(hwnd_, region, TRUE);
+
     ensureFonts();
     return true;
 }
