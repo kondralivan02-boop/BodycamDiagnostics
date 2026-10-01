@@ -14,6 +14,10 @@ struct ToolPreflightResult {
     }
 };
 
+std::filesystem::path resolveRuntimeTool(
+    const std::filesystem::path& appDirectory,
+    const std::filesystem::path& fileName);
+
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
     const std::filesystem::path& ffmpegExe);

@@ -18,7 +18,7 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - Optional crash-survival mirror to another disk, network share or synced folder. Lightweight diagnostics are mirrored every few seconds, and completed 15-second MKV chunks are copied after they stop growing.
 
 ## Runtime layout
-Place external capture tools beside the executable:
+Preferred layout:
 
 ```text
 BodycamDiagnostics.exe
@@ -27,6 +27,8 @@ Tools/
   ffmpeg.exe
 Sessions/
 ```
+
+For restricted/Gizmo environments, both tools may instead be placed directly beside `BodycamDiagnostics.exe`. The application prefers `Tools\` when both locations exist.
 
 Each test creates its own folder inside `Sessions/`.
 

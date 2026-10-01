@@ -47,11 +47,13 @@ jobs:
           Copy-Item EnableFullscreenOverlay.cmd dist/EnableFullscreenOverlay.cmd
           Copy-Item settings.example.ini dist/settings.example.ini
           @"
-          Put these files in this Tools folder before running a test:
+          Preferred: put these files in this Tools folder before running a test:
 
           PresentMon.exe
           ffmpeg.exe
 
+          Restricted/Gizmo fallback: the same files may be placed directly beside BodycamDiagnostics.exe.
+          Bodycam Diagnostics prefers Tools\ when both locations exist.
           Bodycam Diagnostics checks both tools before starting capture.
           ffmpeg.exe must provide h264_nvenc and ddagrab.
           "@ | Set-Content -Encoding UTF8 dist/Tools/README.txt

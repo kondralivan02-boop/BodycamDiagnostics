@@ -90,6 +90,23 @@ bool containsAscii(const std::string& text, const char* needle) {
 }
 }
 
+std::filesystem::path resolveRuntimeTool(
+    const std::filesystem::path& appDirectory,
+    const std::filesystem::path& fileName) {
+
+    const auto preferred = appDirectory / L"Tools" / fileName;
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(preferred, ec))
+        return preferred;
+
+    ec.clear();
+    const auto fallback = appDirectory / fileName;
+    if (std::filesystem::is_regular_file(fallback, ec))
+        return fallback;
+
+    return preferred;
+}
+
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
     const std::filesystem::path& ffmpegExe) {

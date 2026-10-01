@@ -234,10 +234,15 @@ void startSession() {
     GetWindowTextW(gPreset, preset, static_cast<int>(std::size(preset)));
     const std::wstring presetName = preset[0] ? preset : L"Unnamed";
 
-    const auto toolsDir = appDir() / L"Tools";
+    const auto runtimeRoot = appDir();
+    const auto presentMonExe =
+        resolveRuntimeTool(runtimeRoot, L"PresentMon.exe");
+    const auto ffmpegExe =
+        resolveRuntimeTool(runtimeRoot, L"ffmpeg.exe");
+
     const auto preflight = runToolPreflight(
-        toolsDir / L"PresentMon.exe",
-        toolsDir / L"ffmpeg.exe");
+        presentMonExe,
+        ffmpegExe);
 
     if (!preflight.presentMonFound || !preflight.recordingReady()) {
         const std::wstring message =
@@ -309,7 +314,7 @@ void startSession() {
     }
 
     gPresentMon = std::make_unique<PresentMonController>(
-        toolsDir / L"PresentMon.exe");
+        presentMonExe);
 
     gPresentMonStartedWallClock = std::chrono::system_clock::now();
     std::wstring pmError;
@@ -326,7 +331,7 @@ void startSession() {
     }
 
     gRecorder = std::make_unique<RecorderController>(
-        toolsDir / L"ffmpeg.exe");
+        ffmpegExe);
 
     std::wstring recorderError;
     if (gRecorder->start(
