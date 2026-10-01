@@ -758,10 +758,20 @@ bool writeStutterCorrelationReport(
                 << ",\n"
                 << "      \"gpu_power_limit_w\": "
                 << e.gpuPowerLimitW
-                << "\n";
+                << ",\n";
         } else {
-            json << "\n";
+            json << ",\n";
         }
+
+        json << "      \"signals\": [";
+        for (std::size_t signalIndex = 0;
+             signalIndex < e.signals.size();
+             ++signalIndex) {
+            if (signalIndex)
+                json << ", ";
+            json << "\"" << jsonEscape(e.signals[signalIndex]) << "\"";
+        }
+        json << "]\n";
 
         json
             << "    }"
@@ -874,6 +884,20 @@ bool writeStutterCorrelationReport(
         } else {
             text
                 << "Telemetry: no sample within 1500 ms\n";
+        }
+
+        text << "Signals: ";
+        if (e.signals.empty()) {
+            text << "none\n";
+        } else {
+            for (std::size_t signalIndex = 0;
+                 signalIndex < e.signals.size();
+                 ++signalIndex) {
+                if (signalIndex)
+                    text << ", ";
+                text << e.signals[signalIndex];
+            }
+            text << "\n";
         }
     }
 
