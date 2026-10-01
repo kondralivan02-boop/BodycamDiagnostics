@@ -31,7 +31,7 @@ private:
     bool visible_ = false;
 
     int width_ = 1400;
-    int height_ = 52;
+    int height_ = 30;
 
     LiveFrameSnapshot frame_;
     TelemetrySnapshot telemetry_;
