@@ -10,6 +10,9 @@ struct TestValidationResult {
     bool valid = false;
     double expectedDurationSeconds = 0.0;
     double presentMonCoverageRatio = 0.0;
+    bool videoDurationChecked = false;
+    double videoDurationSeconds = 0.0;
+    double videoCoverageRatio = 0.0;
     std::vector<std::wstring> issues;
 };
 
