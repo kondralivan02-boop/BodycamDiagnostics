@@ -16,9 +16,25 @@ jobs:
         shell: pwsh
         run: ./build_windows.ps1
 
-      - name: Upload BodycamDiagnostics.exe
+      - name: Prepare runtime package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/Tools | Out-Null
+          Copy-Item build/Release/BodycamDiagnostics.exe dist/BodycamDiagnostics.exe
+          Copy-Item settings.example.ini dist/settings.example.ini
+          @"
+          Put these files in this Tools folder before running a test:
+
+          PresentMon.exe
+          ffmpeg.exe
+
+          Bodycam Diagnostics checks both tools before starting capture.
+          ffmpeg.exe must provide h264_nvenc and ddagrab.
+          "@ | Set-Content -Encoding UTF8 dist/Tools/README.txt
+
+      - name: Upload runtime package
         uses: actions/upload-artifact@v4
         with:
           name: BodycamDiagnostics-windows-x64
-          path: build/Release/BodycamDiagnostics.exe
+          path: dist/
           if-no-files-found: error
