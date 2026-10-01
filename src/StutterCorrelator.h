@@ -31,6 +31,7 @@ struct StutterEvent {
     double gpuMemoryMHz = 0.0;
     double gpuPowerW = 0.0;
     double gpuPowerLimitW = 0.0;
+    std::vector<std::string> signals;
 };
 
 struct StutterCorrelationResult {
