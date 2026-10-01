@@ -22,6 +22,7 @@ add_executable(BodycamDiagnostics WIN32
     src/LiveFrameMetrics.cpp
     src/DiagnosticsOverlay.cpp
     src/FullscreenOverlayBridge.cpp
+    src/TestValidator.cpp
 )
 
 add_executable(BodycamFullscreenOverlay WIN32
