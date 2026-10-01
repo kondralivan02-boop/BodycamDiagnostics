@@ -1,5 +1,7 @@
 #include "MetricsCalculator.h"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cerrno>
@@ -112,16 +114,75 @@ std::string jsonEscape(const std::string& value) {
 std::wstring widen(const std::string& value) {
     return std::wstring(value.begin(), value.end());
 }
+
+std::string utf16LeBytesToUtf8(const std::string& bytes) {
+    if (bytes.empty())
+        return {};
+
+    const std::size_t charCount = bytes.size() / 2;
+    std::wstring wide;
+    wide.resize(charCount);
+
+    for (std::size_t i = 0; i < charCount; ++i) {
+        const auto lo = static_cast<unsigned char>(bytes[i * 2]);
+        const auto hi = static_cast<unsigned char>(bytes[i * 2 + 1]);
+        wide[i] = static_cast<wchar_t>(
+            static_cast<unsigned>(lo) |
+            (static_cast<unsigned>(hi) << 8));
+    }
+
+    const int required = WideCharToMultiByte(
+        CP_UTF8, 0,
+        wide.data(), static_cast<int>(wide.size()),
+        nullptr, 0, nullptr, nullptr);
+
+    if (required <= 0)
+        return {};
+
+    std::string out(static_cast<std::size_t>(required), '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0,
+        wide.data(), static_cast<int>(wide.size()),
+        out.data(), required, nullptr, nullptr);
+
+    return out;
+}
+
+bool loadCsvTextUtf8(const std::filesystem::path& path,
+                     std::string& text) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return false;
+
+    std::string bytes(
+        (std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>());
+
+    if (bytes.size() >= 2 &&
+        static_cast<unsigned char>(bytes[0]) == 0xFF &&
+        static_cast<unsigned char>(bytes[1]) == 0xFE) {
+        bytes.erase(0, 2);
+        if (bytes.size() % 2 != 0)
+            bytes.pop_back();
+        text = utf16LeBytesToUtf8(bytes);
+        return true;
+    }
+
+    text = trimBom(std::move(bytes));
+    return true;
+}
 }
 
 MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
     MetricsSummary result;
 
-    std::ifstream in(presentMonCsv, std::ios::binary);
-    if (!in) {
+    std::string csvText;
+    if (!loadCsvTextUtf8(presentMonCsv, csvText)) {
         result.error = L"Cannot open presentmon.csv";
         return result;
     }
+
+    std::istringstream in(csvText);
 
     std::string headerLine;
     if (!std::getline(in, headerLine)) {
