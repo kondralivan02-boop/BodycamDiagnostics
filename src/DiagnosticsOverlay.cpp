@@ -7,8 +7,8 @@
 
 namespace {
 constexpr wchar_t kOverlayClass[] = L"BodycamDiagnosticsOverlay";
-constexpr int kOverlayHeight = 52;
-constexpr int kOverlayMinWidth = 900;
+constexpr int kOverlayHeight = 30;
+constexpr int kOverlayMinWidth = 760;
 
 HWND findWindowForProcess(DWORD pid) {
     struct Context {
@@ -106,7 +106,7 @@ bool DiagnosticsOverlay::create(HINSTANCE instance) {
 
     if (!hwnd_) return false;
 
-    SetLayeredWindowAttributes(hwnd_, 0, 232, LWA_ALPHA);
+    SetLayeredWindowAttributes(hwnd_, 0, 202, LWA_ALPHA);
     ensureFonts();
     return true;
 }
@@ -114,7 +114,7 @@ bool DiagnosticsOverlay::create(HINSTANCE instance) {
 void DiagnosticsOverlay::ensureFonts() {
     if (!font_) {
         font_ = CreateFontW(
-            -15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            -11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE,
@@ -123,7 +123,7 @@ void DiagnosticsOverlay::ensureFonts() {
 
     if (!valueFont_) {
         valueFont_ = CreateFontW(
-            -16, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            -12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             CLEARTYPE_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE,
@@ -170,13 +170,13 @@ void DiagnosticsOverlay::positionForProcess(DWORD pid) {
     GetMonitorInfoW(monitor, &mi);
 
     const int monitorWidth = mi.rcMonitor.right - mi.rcMonitor.left;
-    const int margin = 14;
+    const int margin = 10;
 
     width_ = (std::max)(kOverlayMinWidth, monitorWidth - margin * 2);
     height_ = kOverlayHeight;
 
     const int x = mi.rcMonitor.left + margin;
-    const int y = mi.rcMonitor.top + 10;
+    const int y = mi.rcMonitor.top + 6;
 
     SetWindowPos(
         hwnd_, HWND_TOPMOST,
@@ -184,7 +184,7 @@ void DiagnosticsOverlay::positionForProcess(DWORD pid) {
         SWP_NOACTIVATE);
 
     HRGN region = CreateRoundRectRgn(
-        0, 0, width_ + 1, height_ + 1, 12, 12);
+        0, 0, width_ + 1, height_ + 1, 8, 8);
     if (region)
         SetWindowRgn(hwnd_, region, TRUE);
 }
@@ -196,12 +196,12 @@ void DiagnosticsOverlay::paint() {
     RECT client{};
     GetClientRect(hwnd_, &client);
 
-    HBRUSH background = CreateSolidBrush(RGB(13, 16, 22));
-    HPEN border = CreatePen(PS_SOLID, 1, RGB(48, 57, 72));
+    HBRUSH background = CreateSolidBrush(RGB(8, 10, 14));
+    HPEN border = CreatePen(PS_SOLID, 1, RGB(35, 41, 52));
 
     const auto oldBrush = SelectObject(dc, background);
     const auto oldPen = SelectObject(dc, border);
-    RoundRect(dc, 0, 0, client.right, client.bottom, 12, 12);
+    RoundRect(dc, 0, 0, client.right, client.bottom, 8, 8);
     SelectObject(dc, oldPen);
     SelectObject(dc, oldBrush);
     DeleteObject(border);
@@ -209,12 +209,12 @@ void DiagnosticsOverlay::paint() {
 
     SetBkMode(dc, TRANSPARENT);
 
-    const COLORREF text = RGB(232, 237, 244);
-    const COLORREF muted = RGB(142, 153, 171);
-    const COLORREF green = RGB(77, 220, 127);
-    const COLORREF blue = RGB(93, 177, 255);
-    const COLORREF amber = RGB(255, 190, 73);
-    const COLORREF red = RGB(255, 92, 92);
+    const COLORREF text = RGB(203, 209, 219);
+    const COLORREF muted = RGB(111, 120, 136);
+    const COLORREF green = RGB(103, 190, 128);
+    const COLORREF blue = RGB(104, 157, 211);
+    const COLORREF amber = RGB(205, 164, 92);
+    const COLORREF red = RGB(205, 104, 104);
 
     const std::wstring fps = frame_.valid ? fmt(frame_.fps) : L"—";
     const std::wstring ft = frame_.valid ? fmt(frame_.frameTimeMs, 1) + L" ms" : L"—";
@@ -253,7 +253,7 @@ void DiagnosticsOverlay::paint() {
         {L"MEM", mem, green},
     };
 
-    int x = 18;
+    int x = 12;
     const int y = 0;
     const int lineHeight = client.bottom;
 
@@ -267,7 +267,7 @@ void DiagnosticsOverlay::paint() {
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         const int labelW = textWidth(dc, font_, s.label);
-        x += labelW + 7;
+        x += labelW + 4;
 
         SelectObject(dc, valueFont_);
         SetTextColor(dc, s.valueColor);
@@ -275,27 +275,27 @@ void DiagnosticsOverlay::paint() {
         RECT valueRect{x, y, x + valueW + 2, lineHeight};
         DrawTextW(dc, s.value.c_str(), -1, &valueRect,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        x += valueW + 16;
+        x += valueW + 9;
 
         if (i + 1 < segments.size()) {
-            SetTextColor(dc, RGB(69, 78, 94));
+            SetTextColor(dc, RGB(50, 57, 69));
             SelectObject(dc, font_);
-            RECT sep{x, y, x + 12, lineHeight};
+            RECT sep{x, y, x + 8, lineHeight};
             DrawTextW(dc, L"|", -1, &sep,
                       DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-            x += 16;
+            x += 10;
         }
     }
 
     SelectObject(dc, font_);
     SetTextColor(dc, muted);
     RECT stopRect{
-        (std::max)(x + 8, static_cast<int>(client.right) - 86),
+        (std::max)(x + 6, static_cast<int>(client.right) - 64),
         0,
-        client.right - 14,
+        client.right - 10,
         lineHeight
     };
-    DrawTextW(dc, L"F9 STOP", -1, &stopRect,
+    DrawTextW(dc, L"F9", -1, &stopRect,
               DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 
     EndPaint(hwnd_, &ps);
