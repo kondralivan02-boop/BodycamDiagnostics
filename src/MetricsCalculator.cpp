@@ -66,15 +66,19 @@ bool tryParsePositiveDouble(const std::string& text, double& value) {
     return true;
 }
 
-double averageSlowestFps(const std::vector<double>& sortedFrameTimes, double fraction) {
+double slowestTailFps(const std::vector<double>& sortedFrameTimes, double fraction) {
     if (sortedFrameTimes.empty()) return 0.0;
-    const auto count = (std::max)(std::size_t{1},
-                                  static_cast<std::size_t>(std::ceil(sortedFrameTimes.size() * fraction)));
-    const auto begin = sortedFrameTimes.end() - static_cast<std::ptrdiff_t>((std::min)(count, sortedFrameTimes.size()));
-    double fpsSum = 0.0;
-    for (auto it = begin; it != sortedFrameTimes.end(); ++it)
-        fpsSum += 1000.0 / *it;
-    return fpsSum / static_cast<double>(std::distance(begin, sortedFrameTimes.end()));
+
+    const auto count = (std::max)(
+        std::size_t{1},
+        static_cast<std::size_t>(std::ceil(sortedFrameTimes.size() * fraction)));
+
+    const auto actual = (std::min)(count, sortedFrameTimes.size());
+    const auto begin = sortedFrameTimes.end() - static_cast<std::ptrdiff_t>(actual);
+    const double totalMs = std::accumulate(begin, sortedFrameTimes.end(), 0.0);
+    const double meanMs = totalMs / static_cast<double>(actual);
+
+    return meanMs > 0.0 ? 1000.0 / meanMs : 0.0;
 }
 
 double percentileSorted(const std::vector<double>& sorted, double p) {
@@ -194,8 +198,8 @@ MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
     result.p95FrameTimeMs = percentileSorted(frameTimes, 0.95);
     result.p99FrameTimeMs = percentileSorted(frameTimes, 0.99);
     result.p999FrameTimeMs = percentileSorted(frameTimes, 0.999);
-    result.onePercentLowFps = averageSlowestFps(frameTimes, 0.01);
-    result.pointOnePercentLowFps = averageSlowestFps(frameTimes, 0.001);
+    result.onePercentLowFps = slowestTailFps(frameTimes, 0.01);
+    result.pointOnePercentLowFps = slowestTailFps(frameTimes, 0.001);
     result.valid = true;
     return result;
 }
@@ -222,6 +226,7 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "  \"duration_seconds\": " << s.durationSeconds << ",\n"
          << "  \"average_fps\": " << s.averageFps << ",\n"
          << "  \"average_frame_time_ms\": " << s.averageFrameTimeMs << ",\n"
+         << "  \"low_method\": \"inverse_mean_slowest_frametimes\",\n"
          << "  \"one_percent_low_fps\": " << s.onePercentLowFps << ",\n"
          << "  \"point_one_percent_low_fps\": " << s.pointOnePercentLowFps << ",\n"
          << "  \"p50_frame_time_ms\": " << s.p50FrameTimeMs << ",\n"
@@ -245,6 +250,7 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "Frames: " << s.totalFrames << "\n"
          << "Duration: " << s.durationSeconds << " s\n"
          << "Average FPS: " << s.averageFps << "\n"
+         << "Low method: inverse mean of slowest frametimes\n"
          << "1% low: " << s.onePercentLowFps << " FPS\n"
          << "0.1% low: " << s.pointOnePercentLowFps << " FPS\n"
          << "Average frametime: " << s.averageFrameTimeMs << " ms\n"
