@@ -17,11 +17,13 @@ add_executable(BodycamDiagnostics WIN32
     src/MetricsCalculator.cpp
     src/ReportPackager.cpp
     src/SessionMirror.cpp
+    src/AudioLoopbackRecorder.cpp
+    src/AudioVideoMuxer.cpp
 )
 
 target_include_directories(BodycamDiagnostics PRIVATE src)
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32)
+target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32)
 
 
 if(MSVC)
