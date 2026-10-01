@@ -14,6 +14,7 @@
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
 #include "DiagnosticsOverlay.h"
+#include "FullscreenOverlayBridge.h"
 #include "LiveFrameMetrics.h"
 #include "MetricsCalculator.h"
 #include "PresentMonController.h"
@@ -73,7 +74,9 @@ std::unique_ptr<SessionMirror> gMirror;
 std::unique_ptr<AudioLoopbackRecorder> gAudio;
 
 DiagnosticsOverlay gOverlay;
+FullscreenOverlayBridge gFullscreenOverlay;
 LiveFrameMetrics gLiveFrames;
+bool gFullscreenHudActive = false;
 
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
@@ -318,7 +321,22 @@ void startSession() {
     gRunning = true;
     updateControlsForRunningState();
 
-    gOverlay.showForProcess(bodycam.pid);
+    std::wstring fullscreenHudError;
+    gFullscreenHudActive =
+        gFullscreenOverlay.ensureHelperRunning(&fullscreenHudError);
+
+    if (gFullscreenHudActive) {
+        gOverlay.hide();
+        logEvent(L"Fullscreen HUD  •  ON");
+    } else {
+        gOverlay.showForProcess(bodycam.pid);
+        logEvent(
+            L"Fullscreen HUD недоступен  •  " +
+            fullscreenHudError);
+        logEvent(
+            L"Fallback HUD  •  работает в окне/Borderless");
+    }
+
     setStatus(L"Тест идёт  •  F9 для остановки");
 }
 
@@ -326,6 +344,8 @@ void stopSession() {
     if (!gRunning || !gSession)
         return;
 
+    gFullscreenOverlay.hide();
+    gFullscreenHudActive = false;
     gOverlay.hide();
     setStatusVisual(L"Останавливаю тест и формирую отчёт...");
 
@@ -716,7 +736,11 @@ void updateLiveOverlay() {
     const TelemetrySnapshot telemetry =
         gTelemetry ? gTelemetry->latest() : TelemetrySnapshot{};
 
-    gOverlay.update(frame, telemetry);
+    if (gFullscreenHudActive) {
+        gFullscreenOverlay.publish(gGamePid, frame, telemetry);
+    } else {
+        gOverlay.update(frame, telemetry);
+    }
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -845,6 +869,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (gRunning)
             stopSession();
 
+        gFullscreenOverlay.shutdown();
         gOverlay.destroy();
 
         if (gBackgroundBrush) {
