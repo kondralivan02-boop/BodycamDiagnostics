@@ -68,21 +68,19 @@ bool parsePositiveDouble(const std::string& text, double& value) {
     return true;
 }
 
-double averageSlowestFpsSorted(const std::vector<double>& sorted, double fraction) {
+double slowestTailFpsSorted(const std::vector<double>& sorted, double fraction) {
     if (sorted.empty()) return 0.0;
 
     const std::size_t count = (std::max)(
         std::size_t{1},
         static_cast<std::size_t>(std::ceil(sorted.size() * fraction)));
 
-    const auto begin = sorted.end() - static_cast<std::ptrdiff_t>(
-        (std::min)(count, sorted.size()));
+    const std::size_t actual = (std::min)(count, sorted.size());
+    const auto begin = sorted.end() - static_cast<std::ptrdiff_t>(actual);
+    const double totalMs = std::accumulate(begin, sorted.end(), 0.0);
+    const double meanMs = totalMs / static_cast<double>(actual);
 
-    double fpsSum = 0.0;
-    for (auto it = begin; it != sorted.end(); ++it)
-        fpsSum += 1000.0 / *it;
-
-    return fpsSum / static_cast<double>(std::distance(begin, sorted.end()));
+    return meanMs > 0.0 ? 1000.0 / meanMs : 0.0;
 }
 
 double recentAverageFps(const std::vector<double>& values, std::size_t frameCount) {
@@ -224,7 +222,7 @@ LiveFrameSnapshot LiveFrameMetrics::snapshot() const {
     s.frameTimeMs = recentAverageFrameTime(frameTimesMs_, 12);
     std::vector<double> sorted = frameTimesMs_;
     std::sort(sorted.begin(), sorted.end());
-    s.onePercentLowFps = averageSlowestFpsSorted(sorted, 0.01);
-    s.pointOnePercentLowFps = averageSlowestFpsSorted(sorted, 0.001);
+    s.onePercentLowFps = slowestTailFpsSorted(sorted, 0.01);
+    s.pointOnePercentLowFps = slowestTailFpsSorted(sorted, 0.001);
     return s;
 }
