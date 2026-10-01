@@ -8,6 +8,15 @@
 #include <sstream>
 
 namespace {
+struct DirectoryProbe {
+    bool requested = false;
+    bool pathResolved = false;
+    bool exists = false;
+    bool isDirectory = false;
+    bool readable = false;
+    DWORD error = ERROR_SUCCESS;
+};
+
 std::wstring jsonEscape(const std::wstring& text) {
     std::wstring out;
     for (wchar_t c : text) {
@@ -21,6 +30,10 @@ std::wstring jsonEscape(const std::wstring& text) {
         }
     }
     return out;
+}
+
+const wchar_t* boolJson(bool value) {
+    return value ? L"true" : L"false";
 }
 
 std::wstring readRegString(HKEY root, const wchar_t* subKey, const wchar_t* value) {
@@ -69,6 +82,80 @@ std::wstring nvidiaDriverVersion() {
 
     FreeLibrary(nvml);
     return result;
+}
+
+std::wstring environmentVariable(const wchar_t* name) {
+    const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
+    if (required == 0)
+        return {};
+
+    std::wstring value(required, L'\0');
+    const DWORD written = GetEnvironmentVariableW(name, value.data(), required);
+    if (written == 0 || written >= required)
+        return {};
+
+    value.resize(written);
+    return value;
+}
+
+DirectoryProbe probeDirectory(const std::filesystem::path& path) {
+    DirectoryProbe probe{};
+    probe.requested = true;
+    probe.pathResolved = !path.empty();
+
+    if (!probe.pathResolved) {
+        probe.error = ERROR_ENVVAR_NOT_FOUND;
+        return probe;
+    }
+
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        probe.error = GetLastError();
+        return probe;
+    }
+
+    probe.exists = true;
+    probe.isDirectory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+
+    if (!probe.isDirectory) {
+        probe.error = ERROR_DIRECTORY;
+        return probe;
+    }
+
+    const auto wildcard = (path / L"*").wstring();
+    WIN32_FIND_DATAW data{};
+    HANDLE find = FindFirstFileW(wildcard.c_str(), &data);
+    if (find != INVALID_HANDLE_VALUE) {
+        FindClose(find);
+        probe.readable = true;
+        probe.error = ERROR_SUCCESS;
+        return probe;
+    }
+
+    probe.error = GetLastError();
+
+    if (probe.error == ERROR_FILE_NOT_FOUND) {
+        probe.readable = true;
+        probe.error = ERROR_SUCCESS;
+    }
+
+    return probe;
+}
+
+std::wstring bodycamLogStatus(const DirectoryProbe& probe) {
+    if (!probe.pathResolved)
+        return L"localappdata_unresolved";
+    if (!probe.exists)
+        return probe.error == ERROR_ACCESS_DENIED
+            ? L"access_denied"
+            : L"missing";
+    if (!probe.isDirectory)
+        return L"not_directory";
+    if (!probe.readable)
+        return probe.error == ERROR_ACCESS_DENIED
+            ? L"access_denied"
+            : L"unreadable";
+    return L"available";
 }
 
 std::vector<std::wstring> displayAdapters() {
@@ -144,6 +231,12 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     const auto cpu = cpuModel();
     const auto nvidiaDriver = nvidiaDriverVersion();
     const auto displays = activeDisplaysJson();
+    const auto localAppData = environmentVariable(L"LOCALAPPDATA");
+    const auto bodycamLogs = localAppData.empty()
+        ? std::filesystem::path{}
+        : std::filesystem::path(localAppData) / L"Bodycam" / L"Saved" / L"Logs";
+    const auto bodycamLogProbe = probeDirectory(bodycamLogs);
+    const auto systemDriveProbe = probeDirectory(L"C:\\");
 
     const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
     const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
@@ -177,7 +270,19 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
         << virtualWidth
         << L", \"height\": "
         << virtualHeight
-        << L"}\n";
+        << L"},\n";
+    out << L"  \"restricted_environment\": {\n";
+    out << L"    \"system_drive_c_exists\": " << boolJson(systemDriveProbe.exists) << L",\n";
+    out << L"    \"system_drive_c_readable\": " << boolJson(systemDriveProbe.readable) << L",\n";
+    out << L"    \"system_drive_c_error\": " << systemDriveProbe.error << L",\n";
+    out << L"    \"localappdata_resolved\": " << boolJson(!localAppData.empty()) << L",\n";
+    out << L"    \"bodycam_logs_checked\": " << boolJson(bodycamLogProbe.requested) << L",\n";
+    out << L"    \"bodycam_logs_exists\": " << boolJson(bodycamLogProbe.exists) << L",\n";
+    out << L"    \"bodycam_logs_readable\": " << boolJson(bodycamLogProbe.readable) << L",\n";
+    out << L"    \"bodycam_logs_error\": " << bodycamLogProbe.error << L",\n";
+    out << L"    \"bodycam_logs_status\": \"" << bodycamLogStatus(bodycamLogProbe) << L"\",\n";
+    out << L"    \"note\": \"Bodycam logs are optional. Restricted access does not invalidate the capture.\"\n";
+    out << L"  }\n";
     out << L"}\n";
     return true;
 }
