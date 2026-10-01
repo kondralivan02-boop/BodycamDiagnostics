@@ -12,11 +12,6 @@ void check(bool ok, const char* message) {
         throw std::runtime_error(message);
 }
 
-bool hasSignal(const StutterEvent& event, const char* signal) {
-    return std::find(event.signals.begin(), event.signals.end(), signal) !=
-           event.signals.end();
-}
-
 bool hasIndicator(const StutterEvent& event, const char* indicator) {
     return std::find(event.diagnosticIndicators.begin(), event.diagnosticIndicators.end(), indicator) !=
            event.diagnosticIndicators.end();
