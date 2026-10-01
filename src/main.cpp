@@ -361,6 +361,8 @@ void stopSession() {
             sessionPath,
             &muxError)) {
         logEvent(L"Видео со звуком  •  video_with_audio.mkv");
+        if (!muxError.empty())
+            logEvent(L"Предупреждение очистки  •  " + muxError);
     } else {
         logEvent(L"Сведение видео/аудио пропущено  •  " + muxError);
     }
