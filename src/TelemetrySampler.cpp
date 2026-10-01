@@ -1,6 +1,9 @@
 #include "TelemetrySampler.h"
+
 #include <Psapi.h>
+
 #include <chrono>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -8,10 +11,12 @@
 namespace {
 using nvmlReturn_t = int;
 using nvmlDevice_t = void*;
+
 constexpr nvmlReturn_t NVML_SUCCESS = 0;
 constexpr unsigned int NVML_TEMPERATURE_GPU = 0;
 constexpr unsigned int NVML_CLOCK_GRAPHICS = 0;
 constexpr unsigned int NVML_CLOCK_MEM = 2;
+constexpr auto TELEMETRY_SAMPLE_INTERVAL = std::chrono::milliseconds(500);
 
 struct nvmlUtilization_t {
     unsigned int gpu;
@@ -29,10 +34,12 @@ public:
     ~NvmlReader() { close(); }
 
     bool open() {
-        if (module_) return true;
+        if (module_)
+            return true;
 
         module_ = LoadLibraryW(L"nvml.dll");
-        if (!module_) return false;
+        if (!module_)
+            return false;
 
         init_ = reinterpret_cast<InitFn>(GetProcAddress(module_, "nvmlInit_v2"));
         shutdown_ = reinterpret_cast<ShutdownFn>(GetProcAddress(module_, "nvmlShutdown"));
@@ -44,7 +51,13 @@ public:
         getPower_ = reinterpret_cast<GetPowerFn>(GetProcAddress(module_, "nvmlDeviceGetPowerUsage"));
         getPowerLimit_ = reinterpret_cast<GetPowerLimitFn>(GetProcAddress(module_, "nvmlDeviceGetEnforcedPowerLimit"));
 
-        if (!init_ || !shutdown_ || !getHandle_ || !getUtil_ || !getMemory_ || !getTemp_ || !getClock_) {
+        if (!init_ ||
+            !shutdown_ ||
+            !getHandle_ ||
+            !getUtil_ ||
+            !getMemory_ ||
+            !getTemp_ ||
+            !getClock_) {
             close();
             return false;
         }
@@ -97,7 +110,8 @@ public:
         double& powerW,
         double& powerLimitW) {
 
-        if (!device_) return false;
+        if (!device_)
+            return false;
 
         nvmlUtilization_t util{};
         nvmlMemory_t mem{};
@@ -105,11 +119,16 @@ public:
         unsigned gfx = 0;
         unsigned memClock = 0;
 
-        if (getUtil_(device_, &util) != NVML_SUCCESS) return false;
-        if (getMemory_(device_, &mem) != NVML_SUCCESS) return false;
-        if (getTemp_(device_, NVML_TEMPERATURE_GPU, &temp) != NVML_SUCCESS) return false;
-        if (getClock_(device_, NVML_CLOCK_GRAPHICS, &gfx) != NVML_SUCCESS) gfx = 0;
-        if (getClock_(device_, NVML_CLOCK_MEM, &memClock) != NVML_SUCCESS) memClock = 0;
+        if (getUtil_(device_, &util) != NVML_SUCCESS)
+            return false;
+        if (getMemory_(device_, &mem) != NVML_SUCCESS)
+            return false;
+        if (getTemp_(device_, NVML_TEMPERATURE_GPU, &temp) != NVML_SUCCESS)
+            return false;
+        if (getClock_(device_, NVML_CLOCK_GRAPHICS, &gfx) != NVML_SUCCESS)
+            gfx = 0;
+        if (getClock_(device_, NVML_CLOCK_MEM, &memClock) != NVML_SUCCESS)
+            memClock = 0;
 
         unsigned powerMw = 0;
         unsigned powerLimitMw = 0;
@@ -131,7 +150,6 @@ public:
         tempC = temp;
         graphicsMHz = gfx;
         memoryMHz = memClock;
-
         return true;
     }
 
@@ -293,8 +311,7 @@ void TelemetrySampler::worker() {
     FILETIME pCreate{}, pExit{}, pKernel{}, pUser{};
     GetProcessTimes(process_, &pCreate, &pExit, &pKernel, &pUser);
 
-    unsigned long long prevProc =
-        ftToU64(pKernel) + ftToU64(pUser);
+    unsigned long long prevProc = ftToU64(pKernel) + ftToU64(pUser);
 
     FILETIME wall{};
     GetSystemTimeAsFileTime(&wall);
@@ -318,28 +335,19 @@ void TelemetrySampler::worker() {
     while (running_.load()) {
         const auto wakeAt =
             std::chrono::steady_clock::now() +
-            std::chrono::seconds(1);
+            TELEMETRY_SAMPLE_INTERVAL;
 
         double processCpu = 0.0;
 
-        if (GetProcessTimes(
-                process_,
-                &pCreate,
-                &pExit,
-                &pKernel,
-                &pUser)) {
-
+        if (GetProcessTimes(process_, &pCreate, &pExit, &pKernel, &pUser)) {
             const unsigned long long procNow =
                 ftToU64(pKernel) + ftToU64(pUser);
 
             GetSystemTimeAsFileTime(&wall);
             const unsigned long long wallNow = ftToU64(wall);
 
-            const unsigned long long dProc =
-                procNow - prevProc;
-
-            const unsigned long long dWall =
-                wallNow - prevWall;
+            const unsigned long long dProc = procNow - prevProc;
+            const unsigned long long dWall = wallNow - prevWall;
 
             if (dWall > 0) {
                 processCpu =
@@ -348,8 +356,10 @@ void TelemetrySampler::worker() {
                     100.0 /
                     logicalProcessors;
 
-                if (processCpu < 0.0) processCpu = 0.0;
-                if (processCpu > 100.0) processCpu = 100.0;
+                if (processCpu < 0.0)
+                    processCpu = 0.0;
+                if (processCpu > 100.0)
+                    processCpu = 100.0;
             }
 
             prevProc = procNow;
@@ -358,31 +368,15 @@ void TelemetrySampler::worker() {
 
         double systemCpu = 0.0;
 
-        if (GetSystemTimes(
-                &sysIdle,
-                &sysKernel,
-                &sysUser)) {
+        if (GetSystemTimes(&sysIdle, &sysKernel, &sysUser)) {
+            const unsigned long long idleNow = ftToU64(sysIdle);
+            const unsigned long long kernelNow = ftToU64(sysKernel);
+            const unsigned long long userNow = ftToU64(sysUser);
 
-            const unsigned long long idleNow =
-                ftToU64(sysIdle);
-
-            const unsigned long long kernelNow =
-                ftToU64(sysKernel);
-
-            const unsigned long long userNow =
-                ftToU64(sysUser);
-
-            const unsigned long long dIdle =
-                idleNow - prevSysIdle;
-
-            const unsigned long long dKernel =
-                kernelNow - prevSysKernel;
-
-            const unsigned long long dUser =
-                userNow - prevSysUser;
-
-            const unsigned long long total =
-                dKernel + dUser;
+            const unsigned long long dIdle = idleNow - prevSysIdle;
+            const unsigned long long dKernel = kernelNow - prevSysKernel;
+            const unsigned long long dUser = userNow - prevSysUser;
+            const unsigned long long total = dKernel + dUser;
 
             if (total > 0 && total >= dIdle) {
                 systemCpu =
@@ -406,11 +400,9 @@ void TelemetrySampler::worker() {
                 process_,
                 reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc),
                 sizeof(pmc))) {
-
             workingSetMiB =
                 static_cast<double>(pmc.WorkingSetSize) /
                 (1024.0 * 1024.0);
-
             privateUsageMiB =
                 static_cast<double>(pmc.PrivateUsage) /
                 (1024.0 * 1024.0);
@@ -462,9 +454,7 @@ void TelemetrySampler::worker() {
         double memoryAvailableMiB = 0.0;
 
         if (GlobalMemoryStatusEx(&memory)) {
-            memoryLoadPct =
-                static_cast<double>(memory.dwMemoryLoad);
-
+            memoryLoadPct = static_cast<double>(memory.dwMemoryLoad);
             memoryAvailableMiB =
                 static_cast<double>(memory.ullAvailPhys) /
                 (1024.0 * 1024.0);
@@ -475,10 +465,8 @@ void TelemetrySampler::worker() {
         unsigned tempC = 0;
         unsigned gfxMHz = 0;
         unsigned memMHz = 0;
-
         unsigned long long vramUsed = 0;
         unsigned long long vramTotal = 0;
-
         double gpuPowerW = 0.0;
         double gpuPowerLimitW = 0.0;
 
@@ -497,7 +485,6 @@ void TelemetrySampler::worker() {
 
         {
             std::scoped_lock lock(snapshotMutex_);
-
             latest_.valid = true;
             latest_.gpuValid = gpuOk;
             latest_.processCpuPct = processCpu;
@@ -551,7 +538,6 @@ void TelemetrySampler::worker() {
 
         out << '\n';
         out.flush();
-
         std::this_thread::sleep_until(wakeAt);
     }
 }
