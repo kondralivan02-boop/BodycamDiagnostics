@@ -13,6 +13,8 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - CPU/RAM and NVIDIA GPU/VRAM/temperature/clock telemetry to `telemetry.csv`.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - `summary.json` and `summary.txt` written at the end of each test.
+- Automatic `report_bundle.zip` containing the logs, CSV telemetry/frametimes, system snapshot and summaries. Video chunks stay outside the ZIP to keep it small enough to upload for analysis.
+- UI buttons to open the latest session folder and copy the report ZIP path.
 
 ## Runtime layout
 Place external capture tools beside the executable:
@@ -34,4 +36,4 @@ Requirements: CMake 3.24+, MSVC x64 Build Tools, and a Windows SDK.
 ./build_windows.ps1
 ```
 
-GitHub Actions also builds `Release` x64 and uploads `BodycamDiagnostics.exe` as an artifact.
+GitHub Actions builds `Release` x64 and uploads `BodycamDiagnostics.exe` as an artifact.

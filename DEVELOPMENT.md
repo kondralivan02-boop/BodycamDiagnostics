@@ -16,16 +16,15 @@
 - Live telemetry sampler: Bodycam CPU/RAM plus NVIDIA GPU load, VRAM, temperature and clocks via dynamically loaded NVML; writes `telemetry.csv` once per second.
 - CSV metrics summarizer: average FPS, 1% low, 0.1% low, P50/P95/P99/P99.9 frametimes and 50/100 ms stutter counters.
 - Automatic `summary.json` + `summary.txt` generation when a test stops.
-- Built-in test profile selector for the four Bodycam comparison variants (baseline, AMD FSR FG, NVIDIA DLSS FG 2x, Smooth Motion).
+- Built-in test profile selector for the four Bodycam comparison variants.
+- Report packager: creates `report_bundle.zip` with diagnostics data but excludes video chunks.
+- UI shortcuts to open the last session and copy the ZIP path.
+- GitHub Actions Windows x64 build is working and has produced a valid `BodycamDiagnostics.exe`.
 
-## Directory layout at runtime
+## Runtime session output
 ```
-BodycamDiagnostics.exe
-Tools/
-  PresentMon.exe
-  ffmpeg.exe
 Sessions/
-  2026-10-01_10-xx-xx_DLSS Quality - FG OFF/
+  <timestamp>_<preset>/
     session.log
     session.json
     system.json
@@ -33,6 +32,7 @@ Sessions/
     telemetry.csv
     summary.json
     summary.txt
+    report_bundle.zip
     video/
       video_00000.mkv
       video_00001.mkv
@@ -40,9 +40,6 @@ Sessions/
 ```
 
 ## Next modules
-1. Remote/off-machine persistence for club/Gizmo environment.
-2. Chat panel / upload pipeline for sending session artifacts for analysis.
-3. Final Windows x64 build and packaging.
-
-## Build status
-The current execution environment has CMake but no Windows SDK / MinGW cross-compiler, so the Windows `.exe` has not yet been produced here. Source work continues independently of that blocker.
+1. Optional remote/off-machine persistence for the club/Gizmo environment.
+2. Chat/upload integration path for sending `report_bundle.zip` directly for analysis.
+3. Runtime packaging/documentation for PresentMon + FFmpeg dependencies.
