@@ -68,11 +68,8 @@ bool parsePositiveDouble(const std::string& text, double& value) {
     return true;
 }
 
-double averageSlowestFps(const std::vector<double>& values, double fraction) {
-    if (values.empty()) return 0.0;
-
-    std::vector<double> sorted = values;
-    std::sort(sorted.begin(), sorted.end());
+double averageSlowestFpsSorted(const std::vector<double>& sorted, double fraction) {
+    if (sorted.empty()) return 0.0;
 
     const std::size_t count = (std::max)(
         std::size_t{1},
@@ -162,7 +159,10 @@ bool LiveFrameMetrics::processLine(const std::string& rawLine) {
 
     frameTimesMs_.push_back(frameTimeMs);
 
-    constexpr std::size_t kMaxStoredFrames = 500000;
+    // The HUD keeps a bounded recent history so its own work cannot
+    // meaningfully perturb the benchmark. The final report still uses
+    // the complete PresentMon CSV.
+    constexpr std::size_t kMaxStoredFrames = 30000;
     if (frameTimesMs_.size() > kMaxStoredFrames) {
         const std::size_t removeCount = frameTimesMs_.size() - kMaxStoredFrames;
         frameTimesMs_.erase(
@@ -222,7 +222,9 @@ LiveFrameSnapshot LiveFrameMetrics::snapshot() const {
     s.totalFrames = frameTimesMs_.size();
     s.fps = recentAverageFps(frameTimesMs_, 60);
     s.frameTimeMs = recentAverageFrameTime(frameTimesMs_, 12);
-    s.onePercentLowFps = averageSlowestFps(frameTimesMs_, 0.01);
-    s.pointOnePercentLowFps = averageSlowestFps(frameTimesMs_, 0.001);
+    std::vector<double> sorted = frameTimesMs_;
+    std::sort(sorted.begin(), sorted.end());
+    s.onePercentLowFps = averageSlowestFpsSorted(sorted, 0.01);
+    s.pointOnePercentLowFps = averageSlowestFpsSorted(sorted, 0.001);
     return s;
 }
