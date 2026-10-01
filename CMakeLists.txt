@@ -26,6 +26,8 @@ add_executable(BodycamDiagnostics WIN32
     src/CrashCollector.cpp
     src/PerformanceHealth.cpp
     src/StutterCorrelator.cpp
+    src/EnvironmentDiagnostics.cpp
+    src/DiagnosticEvidence.cpp
     src/SessionDiagnostics.cpp
 )
 
@@ -41,7 +43,7 @@ target_link_libraries(BodycamFullscreenOverlay PRIVATE user32 gdi32 advapi32)
 
 target_include_directories(BodycamDiagnostics PRIVATE src)
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme)
+target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi)
 
 
 if(MSVC)
@@ -51,4 +53,21 @@ if(MSVC)
         BodycamFullscreenOverlay PRIVATE
         "/MANIFEST:EMBED"
         "/MANIFESTUAC:level='asInvoker' uiAccess='true'")
+endif()
+
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(DiagnosticEvidenceTests tests/DiagnosticEvidenceTests.cpp src/DiagnosticEvidence.cpp)
+    target_include_directories(DiagnosticEvidenceTests PRIVATE src)
+    add_test(NAME DiagnosticEvidenceTests COMMAND DiagnosticEvidenceTests)
+    add_executable(WindowsDiagnosticsTests tests/WindowsDiagnosticsTests.cpp src/EnvironmentDiagnostics.cpp src/DiagnosticEvidence.cpp src/TestValidator.cpp)
+    target_include_directories(WindowsDiagnosticsTests PRIVATE src)
+    target_compile_definitions(WindowsDiagnosticsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WindowsDiagnosticsTests PRIVATE wevtapi)
+    add_test(NAME WindowsDiagnosticsTests COMMAND WindowsDiagnosticsTests)
+    if(MSVC)
+        target_compile_options(DiagnosticEvidenceTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(WindowsDiagnosticsTests PRIVATE /utf-8 /W4 /WX)
+    endif()
 endif()

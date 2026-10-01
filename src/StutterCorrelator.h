@@ -38,6 +38,8 @@ struct StutterTelemetryDelta {
 };
 
 struct StutterEvent {
+    bool relativeTimeValid = false;
+    double relativeTimeMs = 0.0;
     std::string timestamp;
     double frameTimeMs = 0.0;
     double cpuBusyMs = 0.0;
@@ -91,3 +93,4 @@ bool writeStutterCorrelationReport(
     const std::filesystem::path& jsonOutput,
     const std::filesystem::path& textOutput,
     std::wstring* error = nullptr);
+

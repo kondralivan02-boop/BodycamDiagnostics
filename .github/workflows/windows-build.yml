@@ -16,6 +16,27 @@ jobs:
         shell: pwsh
         run: ./build_windows.ps1
 
+      - name: Run diagnostics regression tests
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $fixtures = Get-ChildItem $env:TEMP -Directory -Filter 'BodycamDiagnostics-test-*'
+          if (-not $fixtures) { throw 'Missing diagnostics JSON fixtures' }
+          foreach ($dir in $fixtures) {
+            foreach ($name in @('environment_capabilities.json', 'windows_events.json', 'windows_events_partial.json', 'windows_events_clock_change.json', 'validation.json')) {
+              Get-Content -Raw (Join-Path $dir.FullName $name) | ConvertFrom-Json | Out-Null
+            }
+            $partial = Get-Content -Raw (Join-Path $dir.FullName 'windows_events_partial.json') | ConvertFrom-Json
+            if ($partial.channels.sources[0].status -ne 'partial') { throw 'Partial source evidence lost' }
+            if ($partial.events[0].stutter_matches.Count -ne 1 -or $partial.events[0].stutter_matches[0].distance_from_interval_ms -ne 0) { throw 'Long-stall interval correlation failed' }
+            $clockChange = Get-Content -Raw (Join-Path $dir.FullName 'windows_events_clock_change.json') | ConvertFrom-Json
+            if ($clockChange.events[0].stutter_matches.Count -ne 0) { throw 'Clock discontinuity must disable correlation' }
+            $validation = Get-Content -Raw (Join-Path $dir.FullName 'validation.json') | ConvertFrom-Json
+            if (-not $validation.valid -or $validation.warnings.Count -eq 0) { throw 'Optional-source validation policy failed' }
+            Remove-Item -Recurse -Force $dir.FullName
+          }
+
       - name: Prepare runtime package
         shell: pwsh
         run: |
@@ -41,3 +62,4 @@ jobs:
           name: BodycamDiagnostics-windows-x64
           path: dist/
           if-no-files-found: error
+

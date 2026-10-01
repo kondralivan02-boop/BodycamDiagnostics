@@ -705,6 +705,9 @@ StutterCorrelationResult correlateStutterEvents(
 
         StutterEvent event{};
         event.timestamp = fields[timeIndex];
+        event.relativeTimeValid = eventTime100ns >= presentMonBaseTime100ns;
+        if (event.relativeTimeValid)
+            event.relativeTimeMs = static_cast<double>(eventTime100ns - presentMonBaseTime100ns) / 10000.0;
         event.frameTimeMs = frameTimeMs;
         parseDouble(fields, cpuBusyIndex, event.cpuBusyMs);
         parseDouble(fields, cpuWaitIndex, event.cpuWaitMs);
@@ -961,3 +964,4 @@ bool writeStutterCorrelationReport(
 
     return true;
 }
+

@@ -235,7 +235,7 @@ TestValidationResult validateTestSession(
     const auto telemetry = sessionPath / L"telemetry.csv";
     if (!std::filesystem::is_regular_file(telemetry, ec) ||
         std::filesystem::file_size(telemetry, ec) == 0) {
-        result.issues.push_back(L"telemetry.csv is missing or empty");
+        result.warnings.push_back(L"Optional telemetry.csv is missing or empty; telemetry correlation is limited");
     }
 
     result.valid = result.issues.empty();
@@ -274,6 +274,11 @@ bool writeTestValidationReport(
         json << "\"" << jsonEscape(narrowAscii(r.issues[i])) << "\"";
     }
 
+    json << "],\n  \"warnings\": [";
+    for (std::size_t i = 0; i < r.warnings.size(); ++i) {
+        if (i) json << ", ";
+        json << "\"" << jsonEscape(narrowAscii(r.warnings[i])) << "\"";
+    }
     json << "]\n}\n";
 
     std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
@@ -296,6 +301,9 @@ bool writeTestValidationReport(
 
     for (const auto& issue : r.issues)
         text << "- " << narrowAscii(issue) << "\n";
+    for (const auto& warning : r.warnings)
+        text << "Warning: " << narrowAscii(warning) << "\n";
 
     return true;
 }
+

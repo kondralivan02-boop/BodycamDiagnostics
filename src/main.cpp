@@ -5,6 +5,7 @@
 #include <uxtheme.h>
 
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
@@ -14,6 +15,7 @@
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
 #include "CrashCollector.h"
+#include "EnvironmentDiagnostics.h"
 #include "DiagnosticsOverlay.h"
 #include "FullscreenOverlayBridge.h"
 #include "LiveFrameMetrics.h"
@@ -91,6 +93,8 @@ bool gRunning = false;
 bool gGameExitedUnexpectedly = false;
 std::chrono::steady_clock::time_point gSessionStartedAt{};
 std::chrono::system_clock::time_point gSessionStartedWallClock{};
+std::chrono::system_clock::time_point gPresentMonStartedWallClock{};
+EnvironmentCapabilities gEnvironmentCapabilities;
 unsigned gIdleTick = 0;
 
 std::filesystem::path appDir() {
@@ -267,6 +271,10 @@ void startSession() {
     logEvent(L"Сессия создана  •  " + presetName);
     logEvent(L"Bodycam PID  •  " + std::to_wstring(bodycam.pid));
 
+    gEnvironmentCapabilities = probeEnvironmentCapabilities(bodycam.pid);
+    if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, gSession->sessionPath() / L"environment_capabilities.json"))
+        logEvent(L"Cannot save environment capabilities profile");
+
     const auto mirrorRoot = configuredMirrorRoot();
     if (!mirrorRoot.empty()) {
         gMirror = std::make_unique<SessionMirror>(
@@ -287,22 +295,27 @@ void startSession() {
             bodycam.pid,
             gSession->sessionPath() / L"telemetry.csv",
             &telemetryError)) {
+        gEnvironmentCapabilities.sources.push_back({"telemetry", "started", 0, true, "Startup succeeded; completeness validated separately"});
         logEvent(L"Телеметрия  •  ON");
     } else {
+        gEnvironmentCapabilities.sources.push_back({"telemetry", "unavailable", 0, true, "See session.log for startup error; no Win32 code supplied by controller"});
         logEvent(L"Телеметрия недоступна  •  " + telemetryError);
     }
 
     gPresentMon = std::make_unique<PresentMonController>(
         toolsDir / L"PresentMon.exe");
 
+    gPresentMonStartedWallClock = std::chrono::system_clock::now();
     std::wstring pmError;
     if (gPresentMon->start(
             bodycam.pid,
             gSession->sessionPath() / L"presentmon.csv",
             &pmError)) {
+        gEnvironmentCapabilities.sources.push_back({"presentmon", "started", 0, false, "Startup succeeded; completeness validated separately"});
         logEvent(L"PresentMon  •  ON");
         gLiveFrames.reset(gSession->sessionPath() / L"presentmon.csv");
     } else {
+        gEnvironmentCapabilities.sources.push_back({"presentmon", "unavailable", 0, false, "See session.log for startup error; no Win32 code supplied by controller"});
         logEvent(L"PresentMon недоступен  •  " + pmError);
     }
 
@@ -313,8 +326,10 @@ void startSession() {
     if (gRecorder->start(
             gSession->sessionPath() / L"video",
             &recorderError)) {
+        gEnvironmentCapabilities.sources.push_back({"nvenc_video", "started", 0, false, "Startup succeeded; completeness validated separately"});
         logEvent(L"NVENC video  •  ON");
     } else {
+        gEnvironmentCapabilities.sources.push_back({"nvenc_video", "unavailable", 0, false, "See session.log for startup error; no Win32 code supplied by controller"});
         logEvent(L"NVENC video недоступно  •  " + recorderError);
     }
 
@@ -323,11 +338,16 @@ void startSession() {
     if (gAudio->start(
             gSession->sessionPath() / L"game_audio.wav",
             &audioError)) {
+        gEnvironmentCapabilities.sources.push_back({"wasapi_audio", "started", 0, true, "Startup succeeded; completeness validated separately"});
         logEvent(L"Game audio  •  ON");
     } else {
+        gEnvironmentCapabilities.sources.push_back({"wasapi_audio", "unavailable", 0, true, "See session.log for startup error; no Win32 code supplied by controller"});
         logEvent(L"Game audio недоступен  •  " + audioError);
         gAudio.reset();
     }
+
+    if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, gSession->sessionPath() / L"environment_capabilities.json"))
+        logEvent(L"Cannot save environment capabilities profile");
 
     gRunning = true;
     updateControlsForRunningState();
@@ -355,6 +375,11 @@ void stopSession() {
     if (!gRunning || !gSession)
         return;
 
+    const auto observationEnd = std::chrono::system_clock::now();
+    const double observationDuration = std::chrono::duration<double>(std::chrono::steady_clock::now() - gSessionStartedAt).count();
+    const double wallDuration = std::chrono::duration<double>(observationEnd - gSessionStartedWallClock).count();
+    const bool clockStable = std::abs(wallDuration - observationDuration) < 1.0;
+
     gFullscreenOverlay.hide();
     gFullscreenHudActive = false;
     gOverlay.hide();
@@ -379,6 +404,9 @@ void stopSession() {
     }
 
     if (gTelemetry) {
+        const auto observed = gTelemetry->latest();
+        gEnvironmentCapabilities.sources.push_back({"telemetry_last_sample", observed.valid ? "observed" : "unavailable", 0, true, "Last sampler snapshot; no guarantee of continuous coverage"});
+        gEnvironmentCapabilities.sources.push_back({"gpu_last_sample", observed.gpuValid ? "observed" : "unavailable", 0, true, "GPU snapshot availability; individual counters may still be absent"});
         gTelemetry->stop();
         logEvent(L"Телеметрия  •  OFF");
         gTelemetry.reset();
@@ -497,11 +525,30 @@ void stopSession() {
         logEvent(L"Ошибка validation report  •  " + validationError);
     }
 
-    const auto sessionDiagnostics = analyzeSessionDiagnostics(
+    if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, sessionPath / L"environment_capabilities.json"))
+        logEvent(L"Cannot update environment capabilities profile");
+    const auto windowsEvents = collectWindowsEvents(gSessionStartedWallClock, observationEnd);
+    const bool eventReportWritten = writeWindowsEventReport(
+        windowsEvents, stutterCorrelation, gPresentMonStartedWallClock,
+        gSessionStartedWallClock, observationEnd, clockStable, gGameExitedUnexpectedly,
+        sessionPath / L"windows_events.json");
+    logEvent(eventReportWritten ? L"Windows Event Log report saved (optional evidence)" : L"Cannot save Windows Event Log report");
+
+    auto sessionDiagnostics = analyzeSessionDiagnostics(
         summary,
         validation,
         performanceHealth,
         stutterCorrelation);
+
+    sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
+    if (!eventReportWritten)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Windows Event Log report could not be written");
+    for (const auto& channel : windowsEvents.channels) {
+        if (channel.status != "available" && channel.status != "available_empty")
+            sessionDiagnostics.diagnosticLimitations.push_back(std::wstring(channel.source.begin(), channel.source.end()) + L": " + std::wstring(channel.status.begin(), channel.status.end()));
+    }
+    if (!clockStable)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Wall clock discontinuity detected; Event Log correlation disabled");
 
     std::wstring sessionDiagnosticsError;
     if (writeSessionDiagnosticsReport(
@@ -1067,3 +1114,4 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
 
     return static_cast<int>(msg.wParam);
 }
+

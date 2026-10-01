@@ -57,6 +57,10 @@ void SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
 
 void SessionMirror::syncOnce(bool finalPass) {
     static constexpr const wchar_t* kLightweightFiles[] = {
+        L"environment_capabilities.json",
+        L"windows_events.json",
+        L"session_diagnostics.json",
+        L"session_diagnostics.txt",
         L"session.log",
         L"session.json",
         L"system.json",
@@ -117,3 +121,4 @@ void SessionMirror::worker() {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
+

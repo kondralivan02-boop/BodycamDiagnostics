@@ -47,6 +47,7 @@ struct SessionDiagnosticsResult {
     std::vector<DiagnosticSignalCount> signalCounts;
     std::vector<DiagnosticTopEvent> topEvents;
     std::vector<std::wstring> validationIssues;
+    std::vector<std::wstring> diagnosticLimitations;
     std::vector<std::wstring> performanceFindings;
 };
 
@@ -62,3 +63,4 @@ bool writeSessionDiagnosticsReport(
     const std::filesystem::path& jsonOutput,
     const std::filesystem::path& textOutput,
     std::wstring* error = nullptr);
+

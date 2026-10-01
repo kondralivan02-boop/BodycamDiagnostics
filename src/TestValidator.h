@@ -14,6 +14,7 @@ struct TestValidationResult {
     double videoDurationSeconds = 0.0;
     double videoCoverageRatio = 0.0;
     std::vector<std::wstring> issues;
+    std::vector<std::wstring> warnings;
 };
 
 TestValidationResult validateTestSession(
@@ -27,3 +28,4 @@ bool writeTestValidationReport(
     const std::filesystem::path& jsonOutput,
     const std::filesystem::path& textOutput,
     std::wstring* error = nullptr);
+

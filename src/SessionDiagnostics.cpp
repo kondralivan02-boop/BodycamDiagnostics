@@ -111,6 +111,7 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
     result.stuttersOver250Ms = metrics.stuttersOver250Ms;
 
     result.validationIssues = validation.issues;
+    result.diagnosticLimitations = validation.warnings;
     result.performanceFindings = performance.findings;
 
     std::map<std::string, std::size_t> signalCounts;
@@ -276,6 +277,10 @@ bool writeSessionDiagnosticsReport(
 
     json << "  ],\n";
 
+    json << "  \"diagnostic_limitations\": ";
+    writeWideStringArray(json, result.diagnosticLimitations, "    ");
+    json << ",\n";
+
     json << "  \"validation_issues\": ";
     writeWideStringArray(json, result.validationIssues, "    ");
     json << ",\n";
@@ -315,6 +320,9 @@ bool writeSessionDiagnosticsReport(
     text << "Stutter correlation available: "
          << (result.stutterCorrelationAvailable ? "yes" : "no")
          << "\n\n";
+
+    for (const auto& limitation : result.diagnosticLimitations)
+        text << "Diagnostic limitation: " << wideToUtf8(limitation) << "\n";
 
     text << "Frames: " << result.totalFrames << "\n";
     text << "Duration: " << result.durationSeconds << " s\n";
@@ -386,3 +394,4 @@ bool writeSessionDiagnosticsReport(
 
     return true;
 }
+
