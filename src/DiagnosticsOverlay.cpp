@@ -290,7 +290,7 @@ void DiagnosticsOverlay::paint() {
     SelectObject(dc, font_);
     SetTextColor(dc, muted);
     RECT stopRect{
-        (std::max)(x + 8, client.right - 86),
+        (std::max)(x + 8, static_cast<int>(client.right) - 86),
         0,
         client.right - 14,
         lineHeight
