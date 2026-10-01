@@ -26,6 +26,7 @@
 #include "SessionManager.h"
 #include "SessionMirror.h"
 #include "SystemSnapshot.h"
+#include "StutterCorrelator.h"
 #include "TelemetrySampler.h"
 #include "TestValidator.h"
 #include "ToolPreflight.h"
@@ -420,6 +421,25 @@ void stopSession() {
         }
     } else {
         logEvent(L"Метрики недоступны  •  " + summary.error);
+    }
+
+    const auto stutterCorrelation = correlateStutterEvents(
+        sessionPath / L"presentmon.csv",
+        sessionPath / L"telemetry.csv",
+        100.0);
+
+    std::wstring stutterReportError;
+    if (writeStutterCorrelationReport(
+            stutterCorrelation,
+            sessionPath / L"stutter_events.json",
+            sessionPath / L"stutter_events.txt",
+            &stutterReportError)) {
+        logEvent(
+            L"Stutter correlation  •  " +
+            std::to_wstring(stutterCorrelation.events.size()) +
+            L" event(s) >=100 ms");
+    } else {
+        logEvent(L"Ошибка stutter correlation  •  " + stutterReportError);
     }
 
     const auto performanceHealth = analyzePerformanceHealth(summary);
