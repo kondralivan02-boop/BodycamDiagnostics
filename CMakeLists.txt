@@ -45,5 +45,5 @@ if(MSVC)
     target_link_options(
         BodycamFullscreenOverlay PRIVATE
         "/MANIFEST:EMBED"
-        "/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/src/FullscreenOverlay.manifest")
+        "/MANIFESTUAC:level='asInvoker' uiAccess='true'")
 endif()
