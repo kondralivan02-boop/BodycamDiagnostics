@@ -114,6 +114,28 @@ bool FullscreenOverlayBridge::ensureHelperRunning(std::wstring* error) {
     }
 
     helperProcess_ = sei.hProcess;
+
+    const DWORD waitResult = WaitForSingleObject(helperProcess_, 300);
+    if (waitResult == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        GetExitCodeProcess(helperProcess_, &exitCode);
+        CloseHandle(helperProcess_);
+        helperProcess_ = nullptr;
+
+        if (error) {
+            if (exitCode == 5) {
+                *error =
+                    L"Fullscreen HUD helper started without Windows UIAccess. "
+                    L"Run EnableFullscreenOverlay.cmd as administrator.";
+            } else {
+                *error =
+                    L"Fullscreen HUD helper exited immediately. Code: " +
+                    std::to_wstring(exitCode);
+            }
+        }
+        return false;
+    }
+
     return true;
 }
 
