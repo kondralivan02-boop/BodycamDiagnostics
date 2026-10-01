@@ -730,6 +730,14 @@ void updateLiveOverlay() {
     if (!gRunning)
         return;
 
+    const auto bodycam = findProcessByName(L"Bodycam-Win64-Shipping.exe");
+    if (!bodycam.pid || bodycam.pid != gGamePid) {
+        logEvent(
+            L"Bodycam завершился во время теста  •  возможный crash/exit");
+        stopSession();
+        return;
+    }
+
     if (gRecorder) {
         std::wstring recorderEvent;
         gRecorder->maintain(&recorderEvent);
