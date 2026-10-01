@@ -15,6 +15,7 @@
 #include "TelemetrySampler.h"
 #include "MetricsCalculator.h"
 #include "ReportPackager.h"
+#include "SessionMirror.h"
 
 namespace {
 constexpr int ID_STATUS = 1001;
@@ -37,6 +38,7 @@ std::unique_ptr<SessionManager> gSession;
 std::unique_ptr<PresentMonController> gPresentMon;
 std::unique_ptr<RecorderController> gRecorder;
 std::unique_ptr<TelemetrySampler> gTelemetry;
+std::unique_ptr<SessionMirror> gMirror;
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
 bool gRunning = false;
@@ -45,6 +47,26 @@ std::filesystem::path appDir() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     return std::filesystem::path(path).parent_path();
+}
+
+std::filesystem::path configuredMirrorRoot() {
+    wchar_t buffer[2048]{};
+    const auto ini = appDir() / L"settings.ini";
+
+    GetPrivateProfileStringW(
+        L"storage", L"mirror_path", L"",
+        buffer, static_cast<DWORD>(std::size(buffer)), ini.c_str());
+
+    if (buffer[0] != L'\0')
+        return std::filesystem::path(buffer);
+
+    const DWORD count = GetEnvironmentVariableW(
+        L"BODYCAM_DIAG_MIRROR", buffer, static_cast<DWORD>(std::size(buffer)));
+
+    if (count > 0 && count < std::size(buffer))
+        return std::filesystem::path(buffer);
+
+    return {};
 }
 
 void setStatus(const std::wstring& text) {
@@ -130,6 +152,18 @@ void startSession() {
     writeSystemSnapshot(gSession->sessionPath() / L"system.json");
     gSession->log(L"Bodycam PID: " + std::to_wstring(bodycam.pid));
 
+    const auto mirrorRoot = configuredMirrorRoot();
+    if (!mirrorRoot.empty()) {
+        gMirror = std::make_unique<SessionMirror>(gSession->sessionPath(), mirrorRoot);
+        std::wstring mirrorError;
+        if (gMirror->start(&mirrorError))
+            gSession->log(L"Persistent mirror enabled: " + gMirror->targetPath().wstring());
+        else {
+            gSession->log(L"Persistent mirror unavailable: " + mirrorError);
+            gMirror.reset();
+        }
+    }
+
     gTelemetry = std::make_unique<TelemetrySampler>();
     std::wstring telemetryError;
     if (gTelemetry->start(bodycam.pid, gSession->sessionPath() / L"telemetry.csv", &telemetryError))
@@ -205,6 +239,11 @@ void stopSession() {
     const bool packaged = packageSessionReport(sessionPath, gLastReportPath, &packError);
     if (!packaged)
         gLastReportPath.clear();
+
+    if (gMirror) {
+        gMirror->stop();
+        gMirror.reset();
+    }
 
     gRunning = false;
     EnableWindow(gStart, TRUE);

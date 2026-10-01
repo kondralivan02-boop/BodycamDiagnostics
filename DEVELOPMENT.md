@@ -19,7 +19,8 @@
 - Built-in test profile selector for the four Bodycam comparison variants.
 - Report packager: creates `report_bundle.zip` with diagnostics data but excludes video chunks.
 - UI shortcuts to open the last session and copy the ZIP path.
-- GitHub Actions Windows x64 build is working and has produced a valid `BodycamDiagnostics.exe`.
+- Optional persistent session mirror controlled by `settings.ini` or `BODYCAM_DIAG_MIRROR`; copies diagnostic files continuously and only mirrors MKV segments after their size stabilizes.
+- GitHub Actions Windows x64 build is working.
 
 ## Runtime session output
 ```
@@ -40,6 +41,6 @@ Sessions/
 ```
 
 ## Next modules
-1. Optional remote/off-machine persistence for the club/Gizmo environment.
-2. Chat/upload integration path for sending `report_bundle.zip` directly for analysis.
-3. Runtime packaging/documentation for PresentMon + FFmpeg dependencies.
+1. Chat/upload integration path for sending `report_bundle.zip` directly for analysis.
+2. Runtime packaging/documentation for PresentMon + FFmpeg dependencies.
+3. Real-PC validation on Bodycam/RTX 4060 Ti, including recording load and NVENC stability.

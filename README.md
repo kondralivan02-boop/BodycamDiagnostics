@@ -13,8 +13,9 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - CPU/RAM and NVIDIA GPU/VRAM/temperature/clock telemetry to `telemetry.csv`.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - `summary.json` and `summary.txt` written at the end of each test.
-- Automatic `report_bundle.zip` containing the logs, CSV telemetry/frametimes, system snapshot and summaries. Video chunks stay outside the ZIP to keep it small enough to upload for analysis.
+- Automatic `report_bundle.zip` containing logs, CSV telemetry/frametimes, system snapshot and summaries; video stays outside the ZIP.
 - UI buttons to open the latest session folder and copy the report ZIP path.
+- Optional crash-survival mirror to another disk, network share or synced folder. Lightweight diagnostics are mirrored every few seconds, and completed 15-second MKV chunks are copied after they stop growing.
 
 ## Runtime layout
 Place external capture tools beside the executable:
@@ -28,6 +29,18 @@ Sessions/
 ```
 
 Each test creates its own folder inside `Sessions/`.
+
+## Optional persistent mirror
+Create `settings.ini` beside the EXE:
+
+```ini
+[storage]
+mirror_path=\\server\share\BodycamDiagnostics
+```
+
+You can also set the environment variable `BODYCAM_DIAG_MIRROR`. The INI value takes priority.
+
+The mirror is intended for the club/Gizmo case: choose a location that survives a local PC reset. If the mirror is another local folder on the same reset image, it will not protect the data.
 
 ## Build
 Requirements: CMake 3.24+, MSVC x64 Build Tools, and a Windows SDK.
