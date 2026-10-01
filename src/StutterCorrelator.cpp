@@ -658,6 +658,70 @@ void writePointText(
 }
 }
 
+void classifyStutterIndicators(StutterEvent& event) {
+    const auto addUnique = [&](const char* signal) {
+        if (std::find(event.signals.begin(), event.signals.end(), signal) ==
+            event.signals.end()) {
+            event.signals.emplace_back(signal);
+        }
+    };
+
+    const double frame = event.frameTimeMs;
+    const bool cpuBusyDominant =
+        event.cpuBusyMs >= 100.0 &&
+        event.cpuBusyMs >= frame * 0.50;
+    const bool cpuWaitHigh =
+        event.cpuWaitMs >= 100.0 &&
+        event.cpuWaitMs >= frame * 0.25;
+    const bool gpuBusyHigh =
+        event.gpuBusyMs >= 100.0 &&
+        event.gpuBusyMs >= frame * 0.25;
+    const bool gpuWaitHigh =
+        event.gpuWaitMs >= 100.0 &&
+        event.gpuWaitMs >= frame * 0.25;
+    const bool gpuLowNearStall =
+        event.telemetryMatched &&
+        frame >= 250.0 &&
+        event.gpuUtilPct <= 15.0;
+    const bool ioSpike =
+        event.beforeToNearest.valid &&
+        (event.beforeToNearest.processReadMiBps >= 50.0 ||
+         event.beforeToNearest.processWriteMiBps >= 50.0);
+    const bool memoryPressure =
+        event.telemetryMatched &&
+        (event.systemMemoryLoadPct >= 90.0 ||
+         (event.systemMemoryAvailableMiB > 0.0 &&
+          event.systemMemoryAvailableMiB <= 2048.0));
+    const bool vramPressure =
+        event.telemetryMatched &&
+        event.vramTotalMiB > 0.0 &&
+        event.vramUsedMiB / event.vramTotalMiB >= 0.95;
+
+    if (cpuBusyDominant || cpuWaitHigh)
+        addUnique("CPU_STALL_INDICATOR");
+
+    if (gpuBusyHigh)
+        addUnique("GPU_BUSY_STALL_INDICATOR");
+
+    if (gpuLowNearStall && !gpuBusyHigh)
+        addUnique("GPU_IDLE_STALL_INDICATOR");
+
+    if (ioSpike)
+        addUnique("IO_SPIKE_INDICATOR");
+
+    if (memoryPressure)
+        addUnique("MEMORY_PRESSURE_INDICATOR");
+
+    if (vramPressure)
+        addUnique("VRAM_PRESSURE_INDICATOR");
+
+    if (event.presentModeChanged)
+        addUnique("PRESENT_MODE_CHANGE_INDICATOR");
+
+    if (gpuWaitHigh && gpuLowNearStall && !gpuBusyHigh)
+        addUnique("POSSIBLE_DRIVER_RENDER_PATH_STALL");
+}
+
 StutterCorrelationResult correlateStutterEvents(
     const std::filesystem::path& presentMonCsv,
     const std::filesystem::path& telemetryCsv,
@@ -709,6 +773,7 @@ StutterCorrelationResult correlateStutterEvents(
     loadTelemetry(telemetryCsv, telemetryRows);
 
     std::string line;
+    std::string previousPresentMode;
     unsigned long long presentMonBaseTime100ns = 0;
     bool presentMonBaseSet = false;
 
@@ -729,9 +794,20 @@ StutterCorrelationResult correlateStutterEvents(
             presentMonBaseSet = true;
         }
 
+        std::string currentPresentMode;
+        if (presentModeIndex < fields.size())
+            currentPresentMode = fields[presentModeIndex];
+
         double frameTimeMs = 0.0;
-        if (!parseDouble(fields, frameTimeIndex, frameTimeMs) ||
-            frameTimeMs < thresholdMs) {
+        if (!parseDouble(fields, frameTimeIndex, frameTimeMs)) {
+            if (!currentPresentMode.empty())
+                previousPresentMode = currentPresentMode;
+            continue;
+        }
+
+        if (frameTimeMs < thresholdMs) {
+            if (!currentPresentMode.empty())
+                previousPresentMode = currentPresentMode;
             continue;
         }
 
@@ -761,8 +837,12 @@ StutterCorrelationResult correlateStutterEvents(
         parseDouble(fields, gpuBusyIndex, event.gpuBusyMs);
         parseDouble(fields, gpuWaitIndex, event.gpuWaitMs);
 
-        if (presentModeIndex < fields.size())
-            event.presentMode = fields[presentModeIndex];
+        event.presentMode = currentPresentMode;
+        event.previousPresentMode = previousPresentMode;
+        event.presentModeChanged =
+            !event.presentMode.empty() &&
+            !event.previousPresentMode.empty() &&
+            event.presentMode != event.previousPresentMode;
 
         unsigned long long telemetryStartTime100ns = eventTime100ns;
         if (!telemetryRows.empty() &&
@@ -787,7 +867,11 @@ StutterCorrelationResult correlateStutterEvents(
 
         calculateTelemetryDeltas(event);
         classifySignals(event);
+        classifyStutterIndicators(event);
         result.events.push_back(std::move(event));
+
+        if (!currentPresentMode.empty())
+            previousPresentMode = currentPresentMode;
     }
 
     result.valid = true;

@@ -50,6 +50,8 @@ struct StutterEvent {
     double gpuBusyMs = 0.0;
     double gpuWaitMs = 0.0;
     std::string presentMode;
+    std::string previousPresentMode;
+    bool presentModeChanged = false;
 
     bool telemetryMatched = false;
     double telemetryDeltaMs = 0.0;
@@ -86,6 +88,8 @@ struct StutterCorrelationResult {
     std::vector<StutterEvent> events;
     std::wstring error;
 };
+
+void classifyStutterIndicators(StutterEvent& event);
 
 StutterCorrelationResult correlateStutterEvents(
     const std::filesystem::path& presentMonCsv,
