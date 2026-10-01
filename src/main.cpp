@@ -505,15 +505,21 @@ void paintMainWindow(HWND hwnd) {
 
     SelectObject(dc, gTitleFont);
     SetTextColor(dc, COLOR_TEXT);
-    TextOutW(dc, 20, 16, L"Bodycam Diagnostics", 19);
+    RECT titleRect{20, 12, 612, 44};
+    DrawTextW(dc, L"Bodycam Diagnostics", -1, &titleRect,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(dc, gSubtitleFont);
     SetTextColor(dc, COLOR_MUTED);
-    TextOutW(dc, 22, 48, L"DLSS  /  FRAME GENERATION  /  TELEMETRY", 39);
+    RECT subtitleRect{22, 42, 612, 64};
+    DrawTextW(dc, L"DLSS  /  FRAME GENERATION  /  TELEMETRY", -1, &subtitleRect,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    TextOutW(dc, 20, 78, L"ПРЕСЕТ ТЕСТА", 12);
+    RECT presetLabel{20, 73, 612, 92};
+    DrawTextW(dc, L"ПРЕСЕТ ТЕСТА", -1, &presetLabel,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     HBRUSH panel = CreateSolidBrush(COLOR_PANEL);
     HPEN border = CreatePen(PS_SOLID, 1, COLOR_BORDER);
@@ -536,13 +542,17 @@ void paintMainWindow(HWND hwnd) {
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    TextOutW(dc, 20, 232, L"ЖУРНАЛ", 6);
+    RECT logLabel{20, 227, 612, 246};
+    DrawTextW(dc, L"ЖУРНАЛ", -1, &logLabel,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    TextOutW(dc, 20, 382,
-             L"F9 — старт / стоп   •   HUD   •   PresentMon   •   NVENC   •   game audio",
-             72);
+    RECT footerRect{20, 374, 612, 401};
+    DrawTextW(dc,
+              L"F9 — старт / стоп   •   HUD   •   PresentMon   •   NVENC   •   game audio",
+              -1, &footerRect,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
     EndPaint(hwnd, &ps);
 }
@@ -614,12 +624,19 @@ void drawPresetItem(const DRAWITEMSTRUCT* dis) {
     FillRect(dc, &r, background);
     DeleteObject(background);
 
-    if (dis->itemID != static_cast<UINT>(-1)) {
+    UINT itemId = dis->itemID;
+    if (itemId == static_cast<UINT>(-1)) {
+        const LRESULT current = SendMessageW(dis->hwndItem, CB_GETCURSEL, 0, 0);
+        if (current != CB_ERR)
+            itemId = static_cast<UINT>(current);
+    }
+
+    if (itemId != static_cast<UINT>(-1)) {
         wchar_t text[192]{};
         SendMessageW(
             dis->hwndItem,
             CB_GETLBTEXT,
-            dis->itemID,
+            itemId,
             reinterpret_cast<LPARAM>(text));
 
         SetBkMode(dc, TRANSPARENT);
@@ -772,12 +789,19 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return reinterpret_cast<INT_PTR>(gPanelBrush);
         }
 
+        if (control == gLog) {
+            SetTextColor(dc, RGB(190, 200, 214));
+            SetBkColor(dc, COLOR_PANEL);
+            return reinterpret_cast<INT_PTR>(gPanelBrush);
+        }
+
         SetTextColor(dc, COLOR_TEXT);
         SetBkColor(dc, COLOR_BG);
         return reinterpret_cast<INT_PTR>(gBackgroundBrush);
     }
 
-    case WM_CTLCOLOREDIT: {
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX: {
         HDC dc = reinterpret_cast<HDC>(wp);
         SetTextColor(dc, RGB(190, 200, 214));
         SetBkColor(dc, COLOR_PANEL);
