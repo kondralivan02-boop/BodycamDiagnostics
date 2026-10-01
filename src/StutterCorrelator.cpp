@@ -568,6 +568,8 @@ StutterCorrelationResult correlateStutterEvents(
     loadTelemetry(telemetryCsv, telemetryRows);
 
     std::string line;
+    unsigned long long presentMonBaseTime100ns = 0;
+    bool presentMonBaseSet = false;
 
     while (std::getline(in, line)) {
         if (line.empty())
@@ -579,6 +581,19 @@ StutterCorrelationResult correlateStutterEvents(
         if (timeIndex >= fields.size())
             continue;
 
+        unsigned long long eventTime100ns = 0;
+
+        if (!parseTimestamp100ns(
+                fields[timeIndex],
+                eventTime100ns)) {
+            continue;
+        }
+
+        if (!presentMonBaseSet) {
+            presentMonBaseTime100ns = eventTime100ns;
+            presentMonBaseSet = true;
+        }
+
         double frameTimeMs = 0.0;
 
         if (!parseDouble(
@@ -586,14 +601,6 @@ StutterCorrelationResult correlateStutterEvents(
                 frameTimeIndex,
                 frameTimeMs) ||
             frameTimeMs < thresholdMs) {
-            continue;
-        }
-
-        unsigned long long eventTime100ns = 0;
-
-        if (!parseTimestamp100ns(
-                fields[timeIndex],
-                eventTime100ns)) {
             continue;
         }
 
@@ -611,11 +618,21 @@ StutterCorrelationResult correlateStutterEvents(
             event.presentMode = fields[presentModeIndex];
 
         double telemetryDeltaMs = 0.0;
+        unsigned long long telemetryTargetTime100ns =
+            eventTime100ns;
+
+        if (!telemetryRows.empty() &&
+            presentMonBaseSet &&
+            eventTime100ns >= presentMonBaseTime100ns) {
+            telemetryTargetTime100ns =
+                telemetryRows.front().time100ns +
+                (eventTime100ns - presentMonBaseTime100ns);
+        }
 
         if (const auto* nearest =
                 nearestTelemetry(
                     telemetryRows,
-                    eventTime100ns,
+                    telemetryTargetTime100ns,
                     telemetryDeltaMs)) {
 
             if (telemetryDeltaMs <= 1500.0) {
