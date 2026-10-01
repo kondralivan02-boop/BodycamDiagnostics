@@ -25,8 +25,7 @@ constexpr int ID_PRESET = 1004;
 constexpr int ID_OPEN_SESSION = 1005;
 constexpr int ID_COPY_REPORT  = 1006;
 constexpr int ID_TIMER  = 1;
-constexpr int HOTKEY_START = 2001;
-constexpr int HOTKEY_STOP  = 2002;
+constexpr int HOTKEY_TOGGLE = 2001;
 
 HWND gStatus{};
 HWND gStart{};
@@ -305,12 +304,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                       20, 155, 650, 58, hwnd, reinterpret_cast<HMENU>(ID_STATUS), nullptr, nullptr);
 
         CreateWindowW(L"STATIC",
-                      L"Ctrl+Shift+F9 Start • Ctrl+Shift+F10 Stop • PresentMon + telemetry + NVENC + automatic report ZIP",
+                      L"F9 Start / Stop • PresentMon + telemetry + NVENC + automatic report ZIP",
                       WS_CHILD | WS_VISIBLE,
                       20, 235, 650, 28, hwnd, nullptr, nullptr, nullptr);
 
-        RegisterHotKey(hwnd, HOTKEY_START, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_F9);
-        RegisterHotKey(hwnd, HOTKEY_STOP, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, VK_F10);
+        RegisterHotKey(hwnd, HOTKEY_TOGGLE, MOD_NOREPEAT, VK_F9);
         SetTimer(hwnd, ID_TIMER, 1500, nullptr);
         return 0;
 
@@ -328,22 +326,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_HOTKEY:
-        if (wp == HOTKEY_START) {
-            if (gSession) gSession->log(L"Hotkey received: Ctrl+Shift+F9");
-            startSession();
-            return 0;
-        }
-        if (wp == HOTKEY_STOP) {
-            if (gSession) gSession->log(L"Hotkey received: Ctrl+Shift+F10");
-            stopSession();
+        if (wp == HOTKEY_TOGGLE) {
+            if (gSession) gSession->log(L"Hotkey received: F9 toggle");
+            if (gRunning) stopSession();
+            else startSession();
             return 0;
         }
         break;
 
     case WM_DESTROY:
         KillTimer(hwnd, ID_TIMER);
-        UnregisterHotKey(hwnd, HOTKEY_START);
-        UnregisterHotKey(hwnd, HOTKEY_STOP);
+        UnregisterHotKey(hwnd, HOTKEY_TOGGLE);
         if (gRunning) stopSession();
         PostQuitMessage(0);
         return 0;
