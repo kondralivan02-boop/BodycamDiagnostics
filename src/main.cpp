@@ -13,6 +13,7 @@
 
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
+#include "CrashCollector.h"
 #include "DiagnosticsOverlay.h"
 #include "FullscreenOverlayBridge.h"
 #include "LiveFrameMetrics.h"
@@ -86,6 +87,7 @@ DWORD gGamePid = 0;
 bool gRunning = false;
 bool gGameExitedUnexpectedly = false;
 std::chrono::steady_clock::time_point gSessionStartedAt{};
+std::chrono::system_clock::time_point gSessionStartedWallClock{};
 unsigned gIdleTick = 0;
 
 std::filesystem::path appDir() {
@@ -254,6 +256,7 @@ void startSession() {
     gGamePid = bodycam.pid;
     gGameExitedUnexpectedly = false;
     gSessionStartedAt = std::chrono::steady_clock::now();
+    gSessionStartedWallClock = std::chrono::system_clock::now();
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
@@ -416,6 +419,17 @@ void stopSession() {
         }
     } else {
         logEvent(L"Метрики недоступны  •  " + summary.error);
+    }
+
+    if (gGameExitedUnexpectedly) {
+        const auto crashData = collectRecentBodycamCrashData(
+            sessionPath,
+            gSessionStartedWallClock);
+
+        if (crashData.copiedAnything)
+            logEvent(L"Crash diagnostics  •  " + crashData.details);
+        else
+            logEvent(L"Crash diagnostics  •  " + crashData.details);
     }
 
     const auto validation = validateTestSession(
