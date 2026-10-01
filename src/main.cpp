@@ -670,7 +670,7 @@ void createControls(HWND hwnd) {
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
         20, 72, 580, 220,
-        hwnd, reinterpret_cast<HMENU>(ID_PRESET), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_PRESET)), nullptr, nullptr);
 
     SendMessageW(gPreset, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
     SendMessageW(gPreset, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), 28);
@@ -691,33 +691,33 @@ void createControls(HWND hwnd) {
         0, L"STATIC", L"Ожидание Bodycam...",
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
         52, 111, 528, 30,
-        hwnd, reinterpret_cast<HMENU>(ID_STATUS), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_STATUS)), nullptr, nullptr);
     SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
 
     gToggle = CreateWindowW(
         L"BUTTON", L"Начать тест",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         20, 159, 180, 38,
-        hwnd, reinterpret_cast<HMENU>(ID_TOGGLE), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_TOGGLE)), nullptr, nullptr);
 
     gOpenSession = CreateWindowW(
         L"BUTTON", L"Открыть сессию",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         210, 159, 180, 38,
-        hwnd, reinterpret_cast<HMENU>(ID_OPEN_SESSION), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_OPEN_SESSION)), nullptr, nullptr);
 
     gCopyReport = CreateWindowW(
         L"BUTTON", L"Копировать ZIP",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         400, 159, 200, 38,
-        hwnd, reinterpret_cast<HMENU>(ID_COPY_REPORT), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_COPY_REPORT)), nullptr, nullptr);
 
     gLog = CreateWindowExW(
         0, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
         32, 234, 556, 82,
-        hwnd, reinterpret_cast<HMENU>(ID_LOG), nullptr, nullptr);
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), nullptr, nullptr);
 
     SendMessageW(gLog, WM_SETFONT, reinterpret_cast<WPARAM>(gSmallFont), TRUE);
     SetWindowTheme(gLog, L"DarkMode_Explorer", nullptr);
