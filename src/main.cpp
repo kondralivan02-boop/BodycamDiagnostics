@@ -18,6 +18,7 @@
 #include "FullscreenOverlayBridge.h"
 #include "LiveFrameMetrics.h"
 #include "MetricsCalculator.h"
+#include "PerformanceHealth.h"
 #include "PresentMonController.h"
 #include "ProcessFinder.h"
 #include "RecorderController.h"
@@ -419,6 +420,23 @@ void stopSession() {
         }
     } else {
         logEvent(L"Метрики недоступны  •  " + summary.error);
+    }
+
+    const auto performanceHealth = analyzePerformanceHealth(summary);
+    std::wstring performanceHealthError;
+    if (writePerformanceHealthReport(
+            performanceHealth,
+            sessionPath / L"performance_health.json",
+            sessionPath / L"performance_health.txt",
+            &performanceHealthError)) {
+        logEvent(
+            performanceHealth.clean
+                ? L"Performance health  •  CLEAN"
+                : L"Performance health  •  CONTAMINATED");
+        for (const auto& finding : performanceHealth.findings)
+            logEvent(L"Performance  •  " + finding);
+    } else {
+        logEvent(L"Ошибка performance health report  •  " + performanceHealthError);
     }
 
     if (gGameExitedUnexpectedly) {
