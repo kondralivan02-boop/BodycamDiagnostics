@@ -19,6 +19,8 @@ struct MetricsSummary {
     double p999FrameTimeMs = 0.0;
     std::size_t stuttersOver50Ms = 0;
     std::size_t stuttersOver100Ms = 0;
+    std::size_t stuttersOver250Ms = 0;
+    double maxFrameTimeMs = 0.0;
     std::wstring error;
 };
 
