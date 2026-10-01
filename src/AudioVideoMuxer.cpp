@@ -153,5 +153,25 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
         return false;
     }
 
+    // Final file is valid: remove temporary/raw capture files.
+    // If muxing fails above, the sources are intentionally kept for recovery.
+    std::wstring cleanupWarning;
+
+    ec.clear();
+    if (!std::filesystem::remove(audioFile, ec) && ec) {
+        cleanupWarning += L"Could not remove game_audio.wav";
+    }
+
+    ec.clear();
+    std::filesystem::remove_all(videoDir, ec);
+    if (ec) {
+        if (!cleanupWarning.empty())
+            cleanupWarning += L"; ";
+        cleanupWarning += L"Could not remove raw video directory";
+    }
+
+    if (error)
+        *error = cleanupWarning;
+
     return true;
 }
