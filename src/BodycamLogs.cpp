@@ -48,8 +48,19 @@ std::string utf8Path(const std::filesystem::path& path) {
 }
 void recordError(BodycamLogCollection& result, const std::error_code& error) {
     result.source.errorCode = static_cast<std::uint32_t>(error.value());
-    result.source.status = result.files.empty() ?
-        (error == std::errc::permission_denied ? "access_denied" : "error") : "partial";
+
+    bool accessDenied = false;
+#ifdef _WIN32
+    accessDenied =
+        error.category() == std::system_category() &&
+        error.value() == ERROR_ACCESS_DENIED;
+#else
+    accessDenied = error == std::errc::permission_denied;
+#endif
+
+    result.source.status = result.files.empty()
+        ? (accessDenied ? "access_denied" : "error")
+        : "partial";
 }
 }
 BodycamLogCollection collectBodycamLogs(const std::filesystem::path& sourceDirectory,
