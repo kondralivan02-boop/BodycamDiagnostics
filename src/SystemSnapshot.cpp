@@ -34,6 +34,43 @@ std::wstring readRegString(HKEY root, const wchar_t* subKey, const wchar_t* valu
     return buffer.data();
 }
 
+std::wstring cpuModel() {
+    return readRegString(
+        HKEY_LOCAL_MACHINE,
+        L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+        L"ProcessorNameString");
+}
+
+std::wstring nvidiaDriverVersion() {
+    HMODULE nvml = LoadLibraryW(L"nvml.dll");
+    if (!nvml) return L"";
+
+    using InitFn = int (*)();
+    using ShutdownFn = int (*)();
+    using DriverFn = int (*)(char*, unsigned int);
+
+    const auto init = reinterpret_cast<InitFn>(GetProcAddress(nvml, "nvmlInit_v2"));
+    const auto shutdown = reinterpret_cast<ShutdownFn>(GetProcAddress(nvml, "nvmlShutdown"));
+    const auto driver = reinterpret_cast<DriverFn>(GetProcAddress(nvml, "nvmlSystemGetDriverVersion"));
+
+    std::wstring result;
+    if (init && shutdown && driver && init() == 0) {
+        char buffer[128]{};
+        if (driver(buffer, static_cast<unsigned int>(sizeof(buffer))) == 0) {
+            const int count = MultiByteToWideChar(CP_UTF8, 0, buffer, -1, nullptr, 0);
+            if (count > 1) {
+                std::vector<wchar_t> wide(static_cast<std::size_t>(count));
+                MultiByteToWideChar(CP_UTF8, 0, buffer, -1, wide.data(), count);
+                result = wide.data();
+            }
+        }
+        shutdown();
+    }
+
+    FreeLibrary(nvml);
+    return result;
+}
+
 std::vector<std::wstring> displayAdapters() {
     std::vector<std::wstring> names;
     DISPLAY_DEVICEW dd{};
@@ -104,6 +141,8 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     const auto displayVersion = readRegString(HKEY_LOCAL_MACHINE, key, L"DisplayVersion");
     const auto build = readRegString(HKEY_LOCAL_MACHINE, key, L"CurrentBuildNumber");
     const auto gpus = displayAdapters();
+    const auto cpu = cpuModel();
+    const auto nvidiaDriver = nvidiaDriverVersion();
     const auto displays = activeDisplaysJson();
 
     const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
@@ -116,7 +155,11 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     out << L"  \"windows\": \"" << jsonEscape(product) << L"\",\n";
     out << L"  \"display_version\": \"" << jsonEscape(displayVersion) << L"\",\n";
     out << L"  \"build\": \"" << jsonEscape(build) << L"\",\n";
+    out << L"  \"cpu\": \"" << jsonEscape(cpu) << L"\",\n";
     out << L"  \"ram_gb\": " << (mem.ullTotalPhys / (1024ull * 1024ull * 1024ull)) << L",\n";
+    out << L"  \"ram_available_gb\": " << (mem.ullAvailPhys / (1024ull * 1024ull * 1024ull)) << L",\n";
+    out << L"  \"memory_load_pct\": " << mem.dwMemoryLoad << L",\n";
+    out << L"  \"nvidia_driver\": \"" << jsonEscape(nvidiaDriver) << L"\",\n";
     out << L"  \"logical_processors\": " << si.dwNumberOfProcessors << L",\n";
     out << L"  \"display_adapters\": [";
     for (size_t i = 0; i < gpus.size(); ++i) {
