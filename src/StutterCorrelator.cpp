@@ -268,6 +268,8 @@ struct TelemetryRow {
     double systemCpuPct = 0.0;
     double workingSetMiB = 0.0;
     double privateUsageMiB = 0.0;
+    double processReadMiBps = 0.0;
+    double processWriteMiBps = 0.0;
     double systemMemoryLoadPct = 0.0;
     double systemMemoryAvailableMiB = 0.0;
     double gpuUtilPct = 0.0;
@@ -316,6 +318,10 @@ bool loadTelemetry(
         findColumn(headers, "working_set_mib");
     const auto privateUsageIndex =
         findColumn(headers, "private_usage_mib");
+    const auto processReadIndex =
+        findColumn(headers, "process_read_mib_s");
+    const auto processWriteIndex =
+        findColumn(headers, "process_write_mib_s");
     const auto memoryLoadIndex =
         findColumn(headers, "system_memory_load_pct");
     const auto memoryAvailableIndex =
@@ -363,6 +369,8 @@ bool loadTelemetry(
         parseDouble(fields, systemCpuIndex, row.systemCpuPct);
         parseDouble(fields, workingSetIndex, row.workingSetMiB);
         parseDouble(fields, privateUsageIndex, row.privateUsageMiB);
+        parseDouble(fields, processReadIndex, row.processReadMiBps);
+        parseDouble(fields, processWriteIndex, row.processWriteMiBps);
         parseDouble(fields, memoryLoadIndex, row.systemMemoryLoadPct);
         parseDouble(fields, memoryAvailableIndex, row.systemMemoryAvailableMiB);
         parseDouble(fields, gpuUtilIndex, row.gpuUtilPct);
@@ -501,6 +509,8 @@ void copyTelemetry(
     event.systemCpuPct = row.systemCpuPct;
     event.workingSetMiB = row.workingSetMiB;
     event.privateUsageMiB = row.privateUsageMiB;
+    event.processReadMiBps = row.processReadMiBps;
+    event.processWriteMiBps = row.processWriteMiBps;
     event.systemMemoryLoadPct = row.systemMemoryLoadPct;
     event.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
     event.gpuUtilPct = row.gpuUtilPct;
@@ -743,6 +753,12 @@ bool writeStutterCorrelationReport(
                 << "      \"private_usage_mib\": "
                 << e.privateUsageMiB
                 << ",\n"
+                << "      \"process_read_mib_s\": "
+                << e.processReadMiBps
+                << ",\n"
+                << "      \"process_write_mib_s\": "
+                << e.processWriteMiBps
+                << ",\n"
                 << "      \"system_memory_load_pct\": "
                 << e.systemMemoryLoadPct
                 << ",\n"
@@ -870,6 +886,11 @@ bool writeStutterCorrelationReport(
                 << " / "
                 << e.privateUsageMiB
                 << " MiB\n"
+                << "Bodycam read/write: "
+                << e.processReadMiBps
+                << " / "
+                << e.processWriteMiBps
+                << " MiB/s\n"
                 << "System memory load / available: "
                 << e.systemMemoryLoadPct
                 << " % / "
