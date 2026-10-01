@@ -163,6 +163,8 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
 
         DiagnosticTopEvent top{};
         top.timestamp = event.timestamp;
+        top.videoBookmarkValid = event.videoBookmarkValid;
+        top.videoBookmarkMs = event.videoBookmarkMs;
         top.frameTimeMs = event.frameTimeMs;
         top.presentMode = event.presentMode;
         top.telemetryMatched = event.telemetryMatched;
@@ -252,7 +254,12 @@ bool writeSessionDiagnosticsReport(
 
         json << "    {"
              << "\"timestamp\":\"" << jsonEscape(event.timestamp) << "\""
-             << ",\"frame_time_ms\":" << event.frameTimeMs
+             << ",\"video_bookmark_ms\":";
+        if (event.videoBookmarkValid)
+            json << event.videoBookmarkMs;
+        else
+            json << "null";
+        json << ",\"frame_time_ms\":" << event.frameTimeMs
              << ",\"present_mode\":\"" << jsonEscape(event.presentMode) << "\""
              << ",\"telemetry_matched\":"
              << (event.telemetryMatched ? "true" : "false")
@@ -349,8 +356,10 @@ bool writeSessionDiagnosticsReport(
     } else {
         for (const auto& event : result.topEvents) {
             text << event.frameTimeMs << " ms"
-                 << " | " << event.timestamp
-                 << " | " << event.presentMode
+                 << " | " << event.timestamp;
+            if (event.videoBookmarkValid)
+                text << " | video≈" << (event.videoBookmarkMs / 1000.0) << " s";
+            text << " | " << event.presentMode
                  << " | telemetry="
                  << (event.telemetryMatched ? "yes" : "no");
 

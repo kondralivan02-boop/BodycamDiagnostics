@@ -17,6 +17,8 @@ struct DiagnosticSignalCount {
 
 struct DiagnosticTopEvent {
     std::string timestamp;
+    bool videoBookmarkValid = false;
+    double videoBookmarkMs = 0.0;
     double frameTimeMs = 0.0;
     std::string presentMode;
     bool telemetryMatched = false;

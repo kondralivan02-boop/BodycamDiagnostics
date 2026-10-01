@@ -40,6 +40,8 @@ struct StutterTelemetryDelta {
 struct StutterEvent {
     bool relativeTimeValid = false;
     double relativeTimeMs = 0.0;
+    bool videoBookmarkValid = false;
+    double videoBookmarkMs = 0.0;
     std::string timestamp;
     double frameTimeMs = 0.0;
     double cpuBusyMs = 0.0;
@@ -79,6 +81,8 @@ struct StutterEvent {
 
 struct StutterCorrelationResult {
     bool valid = false;
+    bool videoBookmarkAlignmentAvailable = false;
+    double videoStartAfterPresentMonMs = 0.0;
     std::vector<StutterEvent> events;
     std::wstring error;
 };
@@ -86,7 +90,9 @@ struct StutterCorrelationResult {
 StutterCorrelationResult correlateStutterEvents(
     const std::filesystem::path& presentMonCsv,
     const std::filesystem::path& telemetryCsv,
-    double thresholdMs = 100.0);
+    double thresholdMs = 100.0,
+    bool videoBookmarkAlignmentAvailable = false,
+    double videoStartAfterPresentMonMs = 0.0);
 
 bool writeStutterCorrelationReport(
     const StutterCorrelationResult& result,

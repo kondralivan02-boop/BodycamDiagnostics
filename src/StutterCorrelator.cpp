@@ -234,6 +234,27 @@ std::string jsonEscape(const std::string& value) {
     return out;
 }
 
+std::string formatVideoBookmark(double valueMs) {
+    if (!std::isfinite(valueMs) || valueMs < 0.0)
+        return "unavailable";
+
+    const auto totalMs = static_cast<long long>(std::llround(valueMs));
+    const auto hours = totalMs / 3600000;
+    const auto minutes = (totalMs / 60000) % 60;
+    const auto seconds = (totalMs / 1000) % 60;
+    const auto milliseconds = totalMs % 1000;
+
+    std::ostringstream out;
+    if (hours > 0)
+        out << hours << ":";
+
+    out << std::setfill('0')
+        << std::setw(2) << minutes << ":"
+        << std::setw(2) << seconds << "."
+        << std::setw(3) << milliseconds;
+    return out.str();
+}
+
 struct TelemetryRow {
     unsigned long long time100ns = 0;
     double processCpuPct = 0.0;
@@ -640,9 +661,20 @@ void writePointText(
 StutterCorrelationResult correlateStutterEvents(
     const std::filesystem::path& presentMonCsv,
     const std::filesystem::path& telemetryCsv,
-    double thresholdMs) {
+    double thresholdMs,
+    bool videoBookmarkAlignmentAvailable,
+    double videoStartAfterPresentMonMs) {
 
     StutterCorrelationResult result;
+    result.videoBookmarkAlignmentAvailable =
+        videoBookmarkAlignmentAvailable &&
+        std::isfinite(videoStartAfterPresentMonMs) &&
+        videoStartAfterPresentMonMs >= 0.0;
+    result.videoStartAfterPresentMonMs =
+        result.videoBookmarkAlignmentAvailable
+            ? videoStartAfterPresentMonMs
+            : 0.0;
+
     std::string csvText;
 
     if (!loadTextUtf8(presentMonCsv, csvText)) {
@@ -706,8 +738,22 @@ StutterCorrelationResult correlateStutterEvents(
         StutterEvent event{};
         event.timestamp = fields[timeIndex];
         event.relativeTimeValid = eventTime100ns >= presentMonBaseTime100ns;
-        if (event.relativeTimeValid)
-            event.relativeTimeMs = static_cast<double>(eventTime100ns - presentMonBaseTime100ns) / 10000.0;
+        if (event.relativeTimeValid) {
+            event.relativeTimeMs =
+                static_cast<double>(eventTime100ns - presentMonBaseTime100ns) /
+                10000.0;
+
+            if (result.videoBookmarkAlignmentAvailable) {
+                const double bookmarkMs =
+                    event.relativeTimeMs -
+                    result.videoStartAfterPresentMonMs;
+
+                if (std::isfinite(bookmarkMs) && bookmarkMs >= 0.0) {
+                    event.videoBookmarkValid = true;
+                    event.videoBookmarkMs = bookmarkMs;
+                }
+            }
+        }
         event.frameTimeMs = frameTimeMs;
         parseDouble(fields, cpuBusyIndex, event.cpuBusyMs);
         parseDouble(fields, cpuWaitIndex, event.cpuWaitMs);
@@ -775,6 +821,16 @@ bool writeStutterCorrelationReport(
     json << "  \"event_count\": " << result.events.size() << ",\n";
     json << "  \"telemetry_window_semantics\": "
             "\"before=start-previous; nearest=start-nearest; after=end-next\",\n";
+    json << "  \"video_bookmark_alignment_available\": "
+         << (result.videoBookmarkAlignmentAvailable ? "true" : "false")
+         << ",\n";
+    json << "  \"video_start_after_presentmon_ms\": "
+         << result.videoStartAfterPresentMonMs
+         << ",\n";
+    json << "  \"video_bookmark_alignment\": "
+            "\"estimated first-PresentMon-frame-relative timeline minus observed PresentMon-launch-to-FFmpeg-start delay\",\n";
+    json << "  \"video_bookmark_note\": "
+            "\"Bookmarks are navigation estimates, not frame-accurate synchronization. PresentMon first-frame startup delay and FFmpeg startup latency are not measured directly; bookmarks are disabled after an observed recorder restart or unstable wall clock.\",\n";
     json << "  \"events\": [\n";
 
     for (std::size_t i = 0; i < result.events.size(); ++i) {
@@ -782,6 +838,24 @@ bool writeStutterCorrelationReport(
 
         json << "    {\n";
         json << "      \"timestamp\": \"" << jsonEscape(e.timestamp) << "\",\n";
+        json << "      \"presentmon_relative_ms\": ";
+        if (e.relativeTimeValid)
+            json << e.relativeTimeMs;
+        else
+            json << "null";
+        json << ",\n";
+        json << "      \"video_bookmark_ms\": ";
+        if (e.videoBookmarkValid)
+            json << e.videoBookmarkMs;
+        else
+            json << "null";
+        json << ",\n";
+        json << "      \"video_bookmark\": ";
+        if (e.videoBookmarkValid)
+            json << "\"" << formatVideoBookmark(e.videoBookmarkMs) << "\"";
+        else
+            json << "null";
+        json << ",\n";
         json << "      \"frame_time_ms\": " << e.frameTimeMs << ",\n";
         json << "      \"cpu_busy_ms\": " << e.cpuBusyMs << ",\n";
         json << "      \"cpu_wait_ms\": " << e.cpuWaitMs << ",\n";
@@ -865,6 +939,9 @@ bool writeStutterCorrelationReport(
     text << "Bodycam Diagnostics stutter correlation\n";
     text << "Threshold: 100.00 ms\n";
     text << "Telemetry window: before=start previous, nearest=start nearest, after=end next\n";
+    text << "Video bookmarks: "
+         << (result.videoBookmarkAlignmentAvailable ? "estimated" : "unavailable")
+         << " (navigation aid only; not frame-accurate)\n";
     text << "Events: " << result.events.size() << "\n";
 
     for (std::size_t i = 0; i < result.events.size(); ++i) {
@@ -872,6 +949,14 @@ bool writeStutterCorrelationReport(
 
         text << "\nEvent " << (i + 1) << "\n";
         text << "Time: " << e.timestamp << "\n";
+        if (e.relativeTimeValid)
+            text << "PresentMon relative: " << e.relativeTimeMs << " ms\n";
+        if (e.videoBookmarkValid)
+            text << "Video bookmark estimate: "
+                 << formatVideoBookmark(e.videoBookmarkMs)
+                 << " (" << e.videoBookmarkMs << " ms)\n";
+        else
+            text << "Video bookmark estimate: unavailable\n";
         text << "Frametime: " << e.frameTimeMs << " ms\n";
         text << "CPU busy / wait: "
              << e.cpuBusyMs << " / " << e.cpuWaitMs << " ms\n";

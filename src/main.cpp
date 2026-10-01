@@ -95,6 +95,9 @@ bool gGameExitedUnexpectedly = false;
 std::chrono::steady_clock::time_point gSessionStartedAt{};
 std::chrono::system_clock::time_point gSessionStartedWallClock{};
 std::chrono::system_clock::time_point gPresentMonStartedWallClock{};
+std::chrono::system_clock::time_point gRecorderStartedWallClock{};
+bool gRecorderStartObserved = false;
+bool gRecorderTimelineContinuous = false;
 EnvironmentCapabilities gEnvironmentCapabilities;
 unsigned gIdleTick = 0;
 
@@ -265,6 +268,8 @@ void startSession() {
     gGameExitedUnexpectedly = false;
     gSessionStartedAt = std::chrono::steady_clock::now();
     gSessionStartedWallClock = std::chrono::system_clock::now();
+    gRecorderStartObserved = false;
+    gRecorderTimelineContinuous = false;
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
@@ -327,6 +332,9 @@ void startSession() {
     if (gRecorder->start(
             gSession->sessionPath() / L"video",
             &recorderError)) {
+        gRecorderStartedWallClock = std::chrono::system_clock::now();
+        gRecorderStartObserved = true;
+        gRecorderTimelineContinuous = true;
         gEnvironmentCapabilities.sources.push_back({"nvenc_video", "started", 0, false, "Startup succeeded; completeness validated separately"});
         logEvent(L"NVENC video  •  ON");
     } else {
@@ -380,6 +388,18 @@ void stopSession() {
     const double observationDuration = std::chrono::duration<double>(std::chrono::steady_clock::now() - gSessionStartedAt).count();
     const double wallDuration = std::chrono::duration<double>(observationEnd - gSessionStartedWallClock).count();
     const bool clockStable = std::abs(wallDuration - observationDuration) < 1.0;
+    const double videoStartAfterPresentMonMs =
+        gRecorderStartObserved
+            ? std::chrono::duration<double, std::milli>(
+                  gRecorderStartedWallClock -
+                  gPresentMonStartedWallClock).count()
+            : 0.0;
+    const bool videoBookmarkAlignmentAvailable =
+        clockStable &&
+        gRecorderStartObserved &&
+        gRecorderTimelineContinuous &&
+        std::isfinite(videoStartAfterPresentMonMs) &&
+        videoStartAfterPresentMonMs >= 0.0;
 
     gFullscreenOverlay.hide();
     gFullscreenHudActive = false;
@@ -456,7 +476,9 @@ void stopSession() {
     const auto stutterCorrelation = correlateStutterEvents(
         sessionPath / L"presentmon.csv",
         sessionPath / L"telemetry.csv",
-        100.0);
+        100.0,
+        videoBookmarkAlignmentAvailable,
+        videoStartAfterPresentMonMs);
 
     std::wstring stutterReportError;
     if (writeStutterCorrelationReport(
@@ -557,6 +579,10 @@ void stopSession() {
 
     if (!bodycamManifestWritten || (bodycamLogs.source.status != "available" && bodycamLogs.source.status != "available_empty"))
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Bodycam logs: " + std::wstring(bodycamLogs.source.status.begin(), bodycamLogs.source.status.end()) + (bodycamManifestWritten ? L"" : L"; manifest write failed"));
+    if (stutterCorrelation.videoBookmarkAlignmentAvailable)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Video stutter bookmarks are navigation estimates; PresentMon first-frame and FFmpeg startup latency are not measured directly");
+    else
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Video stutter bookmarks unavailable because stable clock and uninterrupted recorder timeline were not both confirmed");
     sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
     if (!eventReportWritten)
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Windows Event Log report could not be written");
@@ -917,8 +943,10 @@ void updateLiveOverlay() {
     if (gRecorder) {
         std::wstring recorderEvent;
         gRecorder->maintain(&recorderEvent);
-        if (!recorderEvent.empty())
+        if (!recorderEvent.empty()) {
+            gRecorderTimelineContinuous = false;
             logEvent(recorderEvent);
+        }
     }
 
     gLiveFrames.poll();
