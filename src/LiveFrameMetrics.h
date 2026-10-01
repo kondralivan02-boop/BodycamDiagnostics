@@ -27,7 +27,15 @@ private:
 
     std::filesystem::path csvPath_;
     std::uintmax_t offset_ = 0;
+    enum class TextEncoding {
+        Unknown,
+        Utf8,
+        Utf16Le
+    };
+
+    std::string rawPending_;
     std::string pending_;
+    TextEncoding encoding_ = TextEncoding::Unknown;
     bool headerReady_ = false;
     std::size_t frameTimeIndex_ = static_cast<std::size_t>(-1);
     std::vector<double> frameTimesMs_;
