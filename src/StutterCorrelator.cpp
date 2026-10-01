@@ -1,0 +1,826 @@
+#include "StutterCorrelator.h"
+
+#include <Windows.h>
+
+#include <algorithm>
+#include <cerrno>
+#include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+std::vector<std::string> parseCsvLine(const std::string& line) {
+    std::vector<std::string> fields;
+    std::string field;
+    bool quoted = false;
+
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+
+        if (quoted) {
+            if (c == '"') {
+                if (i + 1 < line.size() && line[i + 1] == '"') {
+                    field.push_back('"');
+                    ++i;
+                } else {
+                    quoted = false;
+                }
+            } else {
+                field.push_back(c);
+            }
+        } else if (c == '"') {
+            quoted = true;
+        } else if (c == ',') {
+            fields.push_back(std::move(field));
+            field.clear();
+        } else {
+            field.push_back(c);
+        }
+    }
+
+    fields.push_back(std::move(field));
+    return fields;
+}
+
+std::string trimBom(std::string value) {
+    if (value.size() >= 3 &&
+        static_cast<unsigned char>(value[0]) == 0xEF &&
+        static_cast<unsigned char>(value[1]) == 0xBB &&
+        static_cast<unsigned char>(value[2]) == 0xBF) {
+        value.erase(0, 3);
+    }
+    return value;
+}
+
+std::string utf16LeBytesToUtf8(const std::string& bytes) {
+    if (bytes.empty())
+        return {};
+
+    const std::size_t charCount = bytes.size() / 2;
+    std::wstring wide(charCount, L'\0');
+
+    for (std::size_t i = 0; i < charCount; ++i) {
+        const auto lo = static_cast<unsigned char>(bytes[i * 2]);
+        const auto hi = static_cast<unsigned char>(bytes[i * 2 + 1]);
+
+        wide[i] = static_cast<wchar_t>(
+            static_cast<unsigned>(lo) |
+            (static_cast<unsigned>(hi) << 8));
+    }
+
+    const int required = WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        wide.data(),
+        static_cast<int>(wide.size()),
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+
+    if (required <= 0)
+        return {};
+
+    std::string out(static_cast<std::size_t>(required), '\0');
+
+    WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        wide.data(),
+        static_cast<int>(wide.size()),
+        out.data(),
+        required,
+        nullptr,
+        nullptr);
+
+    return out;
+}
+
+bool loadTextUtf8(
+    const std::filesystem::path& path,
+    std::string& text) {
+
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        return false;
+
+    std::string bytes(
+        (std::istreambuf_iterator<char>(in)),
+        std::istreambuf_iterator<char>());
+
+    if (bytes.size() >= 2 &&
+        static_cast<unsigned char>(bytes[0]) == 0xFF &&
+        static_cast<unsigned char>(bytes[1]) == 0xFE) {
+
+        bytes.erase(0, 2);
+
+        if (bytes.size() % 2 != 0)
+            bytes.pop_back();
+
+        text = utf16LeBytesToUtf8(bytes);
+        return true;
+    }
+
+    text = trimBom(std::move(bytes));
+    return true;
+}
+
+std::size_t findColumn(
+    const std::vector<std::string>& headers,
+    const char* name) {
+
+    const auto it =
+        std::find(headers.begin(), headers.end(), name);
+
+    if (it == headers.end())
+        return std::numeric_limits<std::size_t>::max();
+
+    return static_cast<std::size_t>(
+        std::distance(headers.begin(), it));
+}
+
+bool parseDouble(
+    const std::vector<std::string>& fields,
+    std::size_t index,
+    double& value) {
+
+    if (index >= fields.size())
+        return false;
+
+    const auto& text = fields[index];
+
+    if (text.empty() || text == "NA")
+        return false;
+
+    char* end = nullptr;
+    errno = 0;
+
+    const double parsed =
+        std::strtod(text.c_str(), &end);
+
+    if (errno != 0 ||
+        end == text.c_str() ||
+        *end != '\0' ||
+        !std::isfinite(parsed)) {
+        return false;
+    }
+
+    value = parsed;
+    return true;
+}
+
+bool parseTimestamp100ns(
+    const std::string& text,
+    unsigned long long& value) {
+
+    const auto dot = text.find('.');
+    const std::string base =
+        dot == std::string::npos
+            ? text
+            : text.substr(0, dot);
+
+    unsigned year = 0;
+    unsigned month = 0;
+    unsigned day = 0;
+    unsigned hour = 0;
+    unsigned minute = 0;
+    unsigned second = 0;
+
+    if (sscanf_s(
+            base.c_str(),
+            "%u-%u-%u %u:%u:%u",
+            &year,
+            &month,
+            &day,
+            &hour,
+            &minute,
+            &second) != 6) {
+        return false;
+    }
+
+    unsigned milliseconds = 0;
+
+    if (dot != std::string::npos && dot + 1 < text.size()) {
+        std::string fraction = text.substr(dot + 1);
+
+        if (fraction.size() > 3)
+            fraction.resize(3);
+
+        while (fraction.size() < 3)
+            fraction.push_back('0');
+
+        milliseconds =
+            static_cast<unsigned>(std::strtoul(
+                fraction.c_str(),
+                nullptr,
+                10));
+    }
+
+    SYSTEMTIME st{};
+    st.wYear = static_cast<WORD>(year);
+    st.wMonth = static_cast<WORD>(month);
+    st.wDay = static_cast<WORD>(day);
+    st.wHour = static_cast<WORD>(hour);
+    st.wMinute = static_cast<WORD>(minute);
+    st.wSecond = static_cast<WORD>(second);
+    st.wMilliseconds = static_cast<WORD>(milliseconds);
+
+    FILETIME ft{};
+
+    if (!SystemTimeToFileTime(&st, &ft))
+        return false;
+
+    ULARGE_INTEGER u{};
+    u.LowPart = ft.dwLowDateTime;
+    u.HighPart = ft.dwHighDateTime;
+
+    value = u.QuadPart;
+    return true;
+}
+
+std::string jsonEscape(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() + 8);
+
+    for (const char c : value) {
+        switch (c) {
+        case '\\': out += "\\\\"; break;
+        case '"': out += "\\\""; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default: out.push_back(c); break;
+        }
+    }
+
+    return out;
+}
+
+struct TelemetryRow {
+    unsigned long long time100ns = 0;
+    double processCpuPct = 0.0;
+    double systemCpuPct = 0.0;
+    double workingSetMiB = 0.0;
+    double privateUsageMiB = 0.0;
+    double systemMemoryLoadPct = 0.0;
+    double systemMemoryAvailableMiB = 0.0;
+    double gpuUtilPct = 0.0;
+    double gpuMemoryUtilPct = 0.0;
+    double vramUsedMiB = 0.0;
+    double vramTotalMiB = 0.0;
+    double gpuTempC = 0.0;
+    double gpuGraphicsMHz = 0.0;
+    double gpuMemoryMHz = 0.0;
+    double gpuPowerW = 0.0;
+    double gpuPowerLimitW = 0.0;
+};
+
+bool loadTelemetry(
+    const std::filesystem::path& telemetryCsv,
+    std::vector<TelemetryRow>& rows) {
+
+    std::string csvText;
+
+    if (!loadTextUtf8(telemetryCsv, csvText))
+        return false;
+
+    std::istringstream in(csvText);
+
+    std::string headerLine;
+
+    if (!std::getline(in, headerLine))
+        return false;
+
+    const auto headers =
+        parseCsvLine(trimBom(headerLine));
+
+    const auto timestampIndex =
+        findColumn(headers, "timestamp");
+
+    if (timestampIndex ==
+        std::numeric_limits<std::size_t>::max()) {
+        return false;
+    }
+
+    const auto processCpuIndex =
+        findColumn(headers, "process_cpu_pct");
+    const auto systemCpuIndex =
+        findColumn(headers, "system_cpu_pct");
+    const auto workingSetIndex =
+        findColumn(headers, "working_set_mib");
+    const auto privateUsageIndex =
+        findColumn(headers, "private_usage_mib");
+    const auto memoryLoadIndex =
+        findColumn(headers, "system_memory_load_pct");
+    const auto memoryAvailableIndex =
+        findColumn(headers, "system_memory_available_mib");
+    const auto gpuUtilIndex =
+        findColumn(headers, "gpu_util_pct");
+    const auto gpuMemoryUtilIndex =
+        findColumn(headers, "gpu_mem_util_pct");
+    const auto vramUsedIndex =
+        findColumn(headers, "vram_used_mib");
+    const auto vramTotalIndex =
+        findColumn(headers, "vram_total_mib");
+    const auto gpuTempIndex =
+        findColumn(headers, "gpu_temp_c");
+    const auto gpuGraphicsIndex =
+        findColumn(headers, "gpu_graphics_mhz");
+    const auto gpuMemoryIndex =
+        findColumn(headers, "gpu_memory_mhz");
+    const auto gpuPowerIndex =
+        findColumn(headers, "gpu_power_w");
+    const auto gpuPowerLimitIndex =
+        findColumn(headers, "gpu_power_limit_w");
+
+    std::string line;
+
+    while (std::getline(in, line)) {
+        if (line.empty())
+            continue;
+
+        const auto fields =
+            parseCsvLine(line);
+
+        if (timestampIndex >= fields.size())
+            continue;
+
+        TelemetryRow row{};
+
+        if (!parseTimestamp100ns(
+                fields[timestampIndex],
+                row.time100ns)) {
+            continue;
+        }
+
+        parseDouble(fields, processCpuIndex, row.processCpuPct);
+        parseDouble(fields, systemCpuIndex, row.systemCpuPct);
+        parseDouble(fields, workingSetIndex, row.workingSetMiB);
+        parseDouble(fields, privateUsageIndex, row.privateUsageMiB);
+        parseDouble(fields, memoryLoadIndex, row.systemMemoryLoadPct);
+        parseDouble(fields, memoryAvailableIndex, row.systemMemoryAvailableMiB);
+        parseDouble(fields, gpuUtilIndex, row.gpuUtilPct);
+        parseDouble(fields, gpuMemoryUtilIndex, row.gpuMemoryUtilPct);
+        parseDouble(fields, vramUsedIndex, row.vramUsedMiB);
+        parseDouble(fields, vramTotalIndex, row.vramTotalMiB);
+        parseDouble(fields, gpuTempIndex, row.gpuTempC);
+        parseDouble(fields, gpuGraphicsIndex, row.gpuGraphicsMHz);
+        parseDouble(fields, gpuMemoryIndex, row.gpuMemoryMHz);
+        parseDouble(fields, gpuPowerIndex, row.gpuPowerW);
+        parseDouble(fields, gpuPowerLimitIndex, row.gpuPowerLimitW);
+
+        rows.push_back(row);
+    }
+
+    std::sort(
+        rows.begin(),
+        rows.end(),
+        [](const TelemetryRow& a, const TelemetryRow& b) {
+            return a.time100ns < b.time100ns;
+        });
+
+    return !rows.empty();
+}
+
+const TelemetryRow* nearestTelemetry(
+    const std::vector<TelemetryRow>& rows,
+    unsigned long long time100ns,
+    double& deltaMs) {
+
+    if (rows.empty())
+        return nullptr;
+
+    const auto it =
+        std::lower_bound(
+            rows.begin(),
+            rows.end(),
+            time100ns,
+            [](const TelemetryRow& row, unsigned long long value) {
+                return row.time100ns < value;
+            });
+
+    const TelemetryRow* best = nullptr;
+    unsigned long long bestDelta =
+        std::numeric_limits<unsigned long long>::max();
+
+    auto consider =
+        [&](const TelemetryRow& row) {
+            const unsigned long long delta =
+                row.time100ns > time100ns
+                    ? row.time100ns - time100ns
+                    : time100ns - row.time100ns;
+
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                best = &row;
+            }
+        };
+
+    if (it != rows.end())
+        consider(*it);
+
+    if (it != rows.begin())
+        consider(*std::prev(it));
+
+    if (!best)
+        return nullptr;
+
+    deltaMs =
+        static_cast<double>(bestDelta) / 10000.0;
+
+    return best;
+}
+
+void copyTelemetry(
+    StutterEvent& event,
+    const TelemetryRow& row,
+    double deltaMs) {
+
+    event.telemetryMatched = true;
+    event.telemetryDeltaMs = deltaMs;
+    event.processCpuPct = row.processCpuPct;
+    event.systemCpuPct = row.systemCpuPct;
+    event.workingSetMiB = row.workingSetMiB;
+    event.privateUsageMiB = row.privateUsageMiB;
+    event.systemMemoryLoadPct = row.systemMemoryLoadPct;
+    event.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
+    event.gpuUtilPct = row.gpuUtilPct;
+    event.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
+    event.vramUsedMiB = row.vramUsedMiB;
+    event.vramTotalMiB = row.vramTotalMiB;
+    event.gpuTempC = row.gpuTempC;
+    event.gpuGraphicsMHz = row.gpuGraphicsMHz;
+    event.gpuMemoryMHz = row.gpuMemoryMHz;
+    event.gpuPowerW = row.gpuPowerW;
+    event.gpuPowerLimitW = row.gpuPowerLimitW;
+}
+}
+
+StutterCorrelationResult correlateStutterEvents(
+    const std::filesystem::path& presentMonCsv,
+    const std::filesystem::path& telemetryCsv,
+    double thresholdMs) {
+
+    StutterCorrelationResult result;
+
+    std::string csvText;
+
+    if (!loadTextUtf8(presentMonCsv, csvText)) {
+        result.error = L"Cannot open presentmon.csv";
+        return result;
+    }
+
+    std::istringstream in(csvText);
+    std::string headerLine;
+
+    if (!std::getline(in, headerLine)) {
+        result.error = L"presentmon.csv is empty";
+        return result;
+    }
+
+    const auto headers =
+        parseCsvLine(trimBom(headerLine));
+
+    const auto timeIndex =
+        findColumn(headers, "CPUStartDateTime");
+    const auto frameTimeIndex =
+        findColumn(headers, "FrameTime");
+    const auto cpuBusyIndex =
+        findColumn(headers, "CPUBusy");
+    const auto cpuWaitIndex =
+        findColumn(headers, "CPUWait");
+    const auto gpuTimeIndex =
+        findColumn(headers, "GPUTime");
+    const auto gpuBusyIndex =
+        findColumn(headers, "GPUBusy");
+    const auto gpuWaitIndex =
+        findColumn(headers, "GPUWait");
+    const auto presentModeIndex =
+        findColumn(headers, "PresentMode");
+
+    if (timeIndex == std::numeric_limits<std::size_t>::max() ||
+        frameTimeIndex == std::numeric_limits<std::size_t>::max()) {
+        result.error =
+            L"presentmon.csv lacks CPUStartDateTime or FrameTime";
+        return result;
+    }
+
+    std::vector<TelemetryRow> telemetryRows;
+    loadTelemetry(telemetryCsv, telemetryRows);
+
+    std::string line;
+
+    while (std::getline(in, line)) {
+        if (line.empty())
+            continue;
+
+        const auto fields =
+            parseCsvLine(line);
+
+        if (timeIndex >= fields.size())
+            continue;
+
+        double frameTimeMs = 0.0;
+
+        if (!parseDouble(
+                fields,
+                frameTimeIndex,
+                frameTimeMs) ||
+            frameTimeMs < thresholdMs) {
+            continue;
+        }
+
+        unsigned long long eventTime100ns = 0;
+
+        if (!parseTimestamp100ns(
+                fields[timeIndex],
+                eventTime100ns)) {
+            continue;
+        }
+
+        StutterEvent event{};
+        event.timestamp = fields[timeIndex];
+        event.frameTimeMs = frameTimeMs;
+
+        parseDouble(fields, cpuBusyIndex, event.cpuBusyMs);
+        parseDouble(fields, cpuWaitIndex, event.cpuWaitMs);
+        parseDouble(fields, gpuTimeIndex, event.gpuTimeMs);
+        parseDouble(fields, gpuBusyIndex, event.gpuBusyMs);
+        parseDouble(fields, gpuWaitIndex, event.gpuWaitMs);
+
+        if (presentModeIndex < fields.size())
+            event.presentMode = fields[presentModeIndex];
+
+        double telemetryDeltaMs = 0.0;
+
+        if (const auto* nearest =
+                nearestTelemetry(
+                    telemetryRows,
+                    eventTime100ns,
+                    telemetryDeltaMs)) {
+
+            if (telemetryDeltaMs <= 1500.0) {
+                copyTelemetry(
+                    event,
+                    *nearest,
+                    telemetryDeltaMs);
+            }
+        }
+
+        result.events.push_back(std::move(event));
+    }
+
+    result.valid = true;
+    return result;
+}
+
+bool writeStutterCorrelationReport(
+    const StutterCorrelationResult& result,
+    const std::filesystem::path& jsonOutput,
+    const std::filesystem::path& textOutput,
+    std::wstring* error) {
+
+    if (!result.valid) {
+        if (error)
+            *error =
+                result.error.empty()
+                    ? L"Stutter correlation is invalid"
+                    : result.error;
+
+        return false;
+    }
+
+    std::ofstream json(
+        jsonOutput,
+        std::ios::binary |
+        std::ios::trunc);
+
+    if (!json) {
+        if (error)
+            *error = L"Cannot create stutter_events.json";
+
+        return false;
+    }
+
+    json
+        << "{\n"
+        << "  \"threshold_ms\": 100.0,\n"
+        << "  \"event_count\": "
+        << result.events.size()
+        << ",\n"
+        << "  \"events\": [\n";
+
+    for (std::size_t i = 0;
+         i < result.events.size();
+         ++i) {
+
+        const auto& e = result.events[i];
+
+        json
+            << "    {\n"
+            << "      \"timestamp\": \""
+            << jsonEscape(e.timestamp)
+            << "\",\n"
+            << std::fixed
+            << std::setprecision(3)
+            << "      \"frame_time_ms\": "
+            << e.frameTimeMs
+            << ",\n"
+            << "      \"cpu_busy_ms\": "
+            << e.cpuBusyMs
+            << ",\n"
+            << "      \"cpu_wait_ms\": "
+            << e.cpuWaitMs
+            << ",\n"
+            << "      \"gpu_time_ms\": "
+            << e.gpuTimeMs
+            << ",\n"
+            << "      \"gpu_busy_ms\": "
+            << e.gpuBusyMs
+            << ",\n"
+            << "      \"gpu_wait_ms\": "
+            << e.gpuWaitMs
+            << ",\n"
+            << "      \"present_mode\": \""
+            << jsonEscape(e.presentMode)
+            << "\",\n"
+            << "      \"telemetry_matched\": "
+            << (e.telemetryMatched ? "true" : "false");
+
+        if (e.telemetryMatched) {
+            json
+                << ",\n"
+                << "      \"telemetry_delta_ms\": "
+                << e.telemetryDeltaMs
+                << ",\n"
+                << "      \"process_cpu_pct\": "
+                << e.processCpuPct
+                << ",\n"
+                << "      \"system_cpu_pct\": "
+                << e.systemCpuPct
+                << ",\n"
+                << "      \"working_set_mib\": "
+                << e.workingSetMiB
+                << ",\n"
+                << "      \"private_usage_mib\": "
+                << e.privateUsageMiB
+                << ",\n"
+                << "      \"system_memory_load_pct\": "
+                << e.systemMemoryLoadPct
+                << ",\n"
+                << "      \"system_memory_available_mib\": "
+                << e.systemMemoryAvailableMiB
+                << ",\n"
+                << "      \"gpu_util_pct\": "
+                << e.gpuUtilPct
+                << ",\n"
+                << "      \"gpu_mem_util_pct\": "
+                << e.gpuMemoryUtilPct
+                << ",\n"
+                << "      \"vram_used_mib\": "
+                << e.vramUsedMiB
+                << ",\n"
+                << "      \"vram_total_mib\": "
+                << e.vramTotalMiB
+                << ",\n"
+                << "      \"gpu_temp_c\": "
+                << e.gpuTempC
+                << ",\n"
+                << "      \"gpu_graphics_mhz\": "
+                << e.gpuGraphicsMHz
+                << ",\n"
+                << "      \"gpu_memory_mhz\": "
+                << e.gpuMemoryMHz
+                << ",\n"
+                << "      \"gpu_power_w\": "
+                << e.gpuPowerW
+                << ",\n"
+                << "      \"gpu_power_limit_w\": "
+                << e.gpuPowerLimitW
+                << "\n";
+        } else {
+            json << "\n";
+        }
+
+        json
+            << "    }"
+            << (i + 1 < result.events.size()
+                    ? ","
+                    : "")
+            << "\n";
+    }
+
+    json
+        << "  ]\n"
+        << "}\n";
+
+    std::ofstream text(
+        textOutput,
+        std::ios::binary |
+        std::ios::trunc);
+
+    if (!text) {
+        if (error)
+            *error = L"Cannot create stutter_events.txt";
+
+        return false;
+    }
+
+    text
+        << "Bodycam Diagnostics stutter correlation\n"
+        << "Threshold: 100.00 ms\n"
+        << "Events: "
+        << result.events.size()
+        << "\n";
+
+    for (std::size_t i = 0;
+         i < result.events.size();
+         ++i) {
+
+        const auto& e = result.events[i];
+
+        text
+            << "\nEvent "
+            << (i + 1)
+            << "\n"
+            << "Time: "
+            << e.timestamp
+            << "\n"
+            << std::fixed
+            << std::setprecision(2)
+            << "Frametime: "
+            << e.frameTimeMs
+            << " ms\n"
+            << "CPU busy / wait: "
+            << e.cpuBusyMs
+            << " / "
+            << e.cpuWaitMs
+            << " ms\n"
+            << "GPU time / busy / wait: "
+            << e.gpuTimeMs
+            << " / "
+            << e.gpuBusyMs
+            << " / "
+            << e.gpuWaitMs
+            << " ms\n"
+            << "Present mode: "
+            << e.presentMode
+            << "\n";
+
+        if (e.telemetryMatched) {
+            text
+                << "Telemetry delta: "
+                << e.telemetryDeltaMs
+                << " ms\n"
+                << "Bodycam CPU / system CPU: "
+                << e.processCpuPct
+                << " / "
+                << e.systemCpuPct
+                << " %\n"
+                << "Bodycam working/private memory: "
+                << e.workingSetMiB
+                << " / "
+                << e.privateUsageMiB
+                << " MiB\n"
+                << "System memory load / available: "
+                << e.systemMemoryLoadPct
+                << " % / "
+                << e.systemMemoryAvailableMiB
+                << " MiB\n"
+                << "GPU util / memory util: "
+                << e.gpuUtilPct
+                << " / "
+                << e.gpuMemoryUtilPct
+                << " %\n"
+                << "VRAM used / total: "
+                << e.vramUsedMiB
+                << " / "
+                << e.vramTotalMiB
+                << " MiB\n"
+                << "GPU temp: "
+                << e.gpuTempC
+                << " C\n"
+                << "GPU graphics / memory clock: "
+                << e.gpuGraphicsMHz
+                << " / "
+                << e.gpuMemoryMHz
+                << " MHz\n"
+                << "GPU power / limit: "
+                << e.gpuPowerW
+                << " / "
+                << e.gpuPowerLimitW
+                << " W\n";
+        } else {
+            text
+                << "Telemetry: no sample within 1500 ms\n";
+        }
+    }
+
+    return true;
+}
