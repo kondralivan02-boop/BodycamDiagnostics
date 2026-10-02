@@ -5,6 +5,7 @@
 struct ToolPreflightResult {
     bool presentMonFound = false;
     bool ffmpegFound = false;
+    bool hashManifestFound = false;
     bool presentMonTrusted = false;
     bool ffmpegTrusted = false;
     bool nvencAvailable = false;
@@ -27,4 +28,5 @@ std::filesystem::path resolveRuntimeTool(
 
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
-    const std::filesystem::path& ffmpegExe);
+    const std::filesystem::path& ffmpegExe,
+    const std::filesystem::path& hashManifest);

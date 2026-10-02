@@ -247,7 +247,8 @@ void startSession() {
 
     const auto preflight = runToolPreflight(
         presentMonExe,
-        ffmpegExe);
+        ffmpegExe,
+        runtimeRoot / L"runtime-tools.sha256");
 
     if (!preflight.presentMonFound || !preflight.presentMonTrusted || !preflight.recordingReady()) {
         const std::wstring message =

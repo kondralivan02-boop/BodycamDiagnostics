@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 #include <vector>
 
 namespace {
@@ -93,10 +94,19 @@ bool containsAscii(const std::string& text, const char* needle) {
     return text.find(needle) != std::string::npos;
 }
 
-constexpr const char* kPresentMonSha256 =
-    "b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af";
-constexpr const char* kFfmpegSha256 =
-    "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec";
+std::string lowerAscii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+bool isSha256Hex(const std::string& value) {
+    if (value.size() != 64)
+        return false;
+    return std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return std::isxdigit(c) != 0;
+    });
+}
 }
 
 std::string fileSha256Hex(const std::filesystem::path& file) {
@@ -165,6 +175,45 @@ std::string fileSha256Hex(const std::filesystem::path& file) {
     return out.str();
 }
 
+std::string expectedRuntimeToolSha256(
+    const std::filesystem::path& manifest,
+    const std::filesystem::path& fileName) {
+
+    std::ifstream in(manifest, std::ios::binary);
+    if (!in)
+        return {};
+
+    const auto wanted = lowerAscii(fileName.filename().string());
+    std::string matched;
+    std::string line;
+
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        const auto first = line.find_first_not_of(" \t");
+        if (first == std::string::npos || line[first] == '#')
+            continue;
+
+        std::istringstream fields(line);
+        std::string hash;
+        std::string name;
+        if (!(fields >> hash >> name))
+            continue;
+
+        hash = lowerAscii(hash);
+        if (!isSha256Hex(hash) || lowerAscii(name) != wanted)
+            continue;
+
+        if (!matched.empty() && matched != hash)
+            return {};
+
+        matched = std::move(hash);
+    }
+
+    return matched;
+}
+
 std::filesystem::path resolveRuntimeTool(
     const std::filesystem::path& appDirectory,
     const std::filesystem::path& fileName) {
@@ -184,20 +233,31 @@ std::filesystem::path resolveRuntimeTool(
 
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
-    const std::filesystem::path& ffmpegExe) {
+    const std::filesystem::path& ffmpegExe,
+    const std::filesystem::path& hashManifest) {
 
     ToolPreflightResult r;
     std::error_code ec;
     r.presentMonFound = std::filesystem::is_regular_file(presentMonExe, ec);
     ec.clear();
     r.ffmpegFound = std::filesystem::is_regular_file(ffmpegExe, ec);
+    ec.clear();
+    r.hashManifestFound = std::filesystem::is_regular_file(hashManifest, ec);
 
-    if (r.presentMonFound)
-        r.presentMonTrusted = fileSha256Hex(presentMonExe) == kPresentMonSha256;
-    if (r.ffmpegFound)
-        r.ffmpegTrusted = fileSha256Hex(ffmpegExe) == kFfmpegSha256;
+    const auto expectedPresentMon =
+        expectedRuntimeToolSha256(hashManifest, presentMonExe.filename());
+    const auto expectedFfmpeg =
+        expectedRuntimeToolSha256(hashManifest, ffmpegExe.filename());
+
+    if (r.presentMonFound && !expectedPresentMon.empty())
+        r.presentMonTrusted = fileSha256Hex(presentMonExe) == expectedPresentMon;
+    if (r.ffmpegFound && !expectedFfmpeg.empty())
+        r.ffmpegTrusted = fileSha256Hex(ffmpegExe) == expectedFfmpeg;
 
     std::wstring d;
+    d += L"Runtime hash manifest: ";
+    d += r.hashManifestFound ? L"OK" : L"MISSING";
+    d += L"\n";
     d += L"PresentMon: ";
     d += r.presentMonFound ? (r.presentMonTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
     d += L"\nFFmpeg: ";
