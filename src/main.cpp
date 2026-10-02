@@ -566,8 +566,33 @@ void stopSession() {
     }
 
     if (gAudio) {
-        gAudio->stop();
-        logEvent(L"Game audio  •  OFF");
+        std::wstring audioStopError;
+        const bool audioOk =
+            gAudio->stop(&audioStopError);
+
+        if (audioOk) {
+            logEvent(L"Game audio  •  OFF");
+        } else {
+            logEvent(
+                L"Game audio incomplete  •  " +
+                (audioStopError.empty()
+                    ? std::wstring(L"WASAPI finalization failed")
+                    : audioStopError));
+
+            gEnvironmentCapabilities.sources.push_back({
+                "wasapi_audio_runtime",
+                "failed_on_stop",
+                0,
+                true,
+                "Optional WASAPI loopback did not finalize cleanly; WAV discarded"
+            });
+
+            std::error_code audioEc;
+            std::filesystem::remove(
+                gSession->sessionPath() / L"game_audio.wav",
+                audioEc);
+        }
+
         gAudio.reset();
     }
 
@@ -1158,6 +1183,33 @@ void updateLiveOverlay() {
 
             stopSession();
             return;
+        }
+    }
+
+    if (gAudio) {
+        std::wstring audioEvent;
+        if (!gAudio->healthy(&audioEvent)) {
+            logEvent(
+                L"Optional game audio потерян  •  " +
+                (audioEvent.empty()
+                    ? std::wstring(L"WASAPI stopped unexpectedly")
+                    : audioEvent));
+
+            gEnvironmentCapabilities.sources.push_back({
+                "wasapi_audio_runtime",
+                "failed_during_capture",
+                0,
+                true,
+                "Optional WASAPI loopback failed after startup; partial WAV discarded"
+            });
+
+            gAudio->stop();
+            gAudio.reset();
+
+            std::error_code audioEc;
+            std::filesystem::remove(
+                gSession->sessionPath() / L"game_audio.wav",
+                audioEc);
         }
     }
 

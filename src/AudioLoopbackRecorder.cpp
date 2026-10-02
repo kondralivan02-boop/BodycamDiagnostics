@@ -100,9 +100,12 @@ bool AudioLoopbackRecorder::start(const std::filesystem::path& wavOutput,
         ready_ = false;
         readyOk_ = false;
         readyError_.clear();
+        runtimeError_.clear();
     }
 
     wavOutput_ = wavOutput;
+    runtimeHealthy_.store(true);
+    stopRequested_.store(false);
     running_.store(true);
 
     try {
@@ -128,19 +131,79 @@ bool AudioLoopbackRecorder::start(const std::filesystem::path& wavOutput,
     if (!readyOk_) {
         const auto message = readyError_;
         lock.unlock();
+        stopRequested_.store(true);
         running_.store(false);
         if (thread_.joinable()) thread_.join();
         if (error) *error = message;
         return false;
     }
 
+    lock.unlock();
+
+    std::wstring runtimeError;
+    if (!healthy(&runtimeError)) {
+        stopRequested_.store(true);
+        running_.store(false);
+        if (thread_.joinable())
+            thread_.join();
+        if (error)
+            *error = runtimeError;
+        return false;
+    }
+
     return true;
 }
 
-void AudioLoopbackRecorder::stop() {
+bool AudioLoopbackRecorder::stop(std::wstring* error) {
+    stopRequested_.store(true);
     running_.store(false);
+
     if (thread_.joinable())
         thread_.join();
+
+    if (!runtimeHealthy_.load()) {
+        std::lock_guard lock(readyMutex_);
+        if (error) {
+            *error =
+                runtimeError_.empty()
+                    ? L"WASAPI capture failed during recording"
+                    : runtimeError_;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool AudioLoopbackRecorder::healthy(std::wstring* error) {
+    if (!runtimeHealthy_.load()) {
+        std::lock_guard lock(readyMutex_);
+        if (error) {
+            *error =
+                runtimeError_.empty()
+                    ? L"WASAPI capture failed during recording"
+                    : runtimeError_;
+        }
+        return false;
+    }
+
+    if (!stopRequested_.load() &&
+        !running_.load()) {
+        if (error)
+            *error = L"WASAPI capture stopped unexpectedly";
+        return false;
+    }
+
+    return true;
+}
+
+void AudioLoopbackRecorder::recordRuntimeFailure(
+    std::wstring error) {
+
+    runtimeHealthy_.store(false);
+    std::lock_guard lock(readyMutex_);
+    if (runtimeError_.empty())
+        runtimeError_ = std::move(error);
 }
 
 void AudioLoopbackRecorder::signalReady(bool ok, std::wstring error) {
@@ -259,7 +322,11 @@ void AudioLoopbackRecorder::worker() {
         while (running_.load()) {
             UINT32 packetFrames = 0;
             hr = captureClient->GetNextPacketSize(&packetFrames);
-            if (FAILED(hr)) break;
+            if (FAILED(hr)) {
+                recordRuntimeFailure(
+                    L"IAudioCaptureClient::GetNextPacketSize failed");
+                break;
+            }
 
             while (packetFrames > 0 && running_.load()) {
                 BYTE* data = nullptr;
@@ -268,7 +335,11 @@ void AudioLoopbackRecorder::worker() {
 
                 hr = captureClient->GetBuffer(
                     &data, &frames, &flags, nullptr, nullptr);
-                if (FAILED(hr)) break;
+                if (FAILED(hr)) {
+                    recordRuntimeFailure(
+                        L"IAudioCaptureClient::GetBuffer failed");
+                    break;
+                }
 
                 const std::size_t bytes =
                     static_cast<std::size_t>(frames) * mixFormat->nBlockAlign;
@@ -286,32 +357,67 @@ void AudioLoopbackRecorder::worker() {
 
                 totalDataBytes += bytes;
                 if (totalDataBytes > 0xFFFFFFFFull) {
+                    recordRuntimeFailure(
+                        L"WASAPI WAV exceeded RIFF size limit");
                     running_.store(false);
                     break;
                 }
 
                 hr = captureClient->GetNextPacketSize(&packetFrames);
-                if (FAILED(hr)) break;
+                if (FAILED(hr)) {
+                    recordRuntimeFailure(
+                        L"IAudioCaptureClient::GetNextPacketSize failed");
+                    break;
+                }
             }
 
-            if (!out || FAILED(hr)) break;
+            if (!out) {
+                recordRuntimeFailure(
+                    L"Cannot write game_audio.wav");
+                break;
+            }
+
+            if (FAILED(hr))
+                break;
 
             const auto now = std::chrono::steady_clock::now();
             if (now >= nextHeaderRefresh) {
-                updateWaveSizes(
-                    out, dataSizeOffset,
-                    static_cast<std::uint32_t>(totalDataBytes));
-                nextHeaderRefresh = now + std::chrono::seconds(1);
+                if (!updateWaveSizes(
+                        out,
+                        dataSizeOffset,
+                        static_cast<std::uint32_t>(
+                            totalDataBytes))) {
+                    recordRuntimeFailure(
+                        L"Cannot refresh game_audio.wav header");
+                    break;
+                }
+                nextHeaderRefresh =
+                    now + std::chrono::seconds(1);
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
 
-        audioClient->Stop();
-        updateWaveSizes(
-            out, dataSizeOffset,
-            static_cast<std::uint32_t>(
-                (std::min<std::uint64_t>)(totalDataBytes, 0xFFFFFFFFull)));
+        const HRESULT stopHr =
+            audioClient->Stop();
+        if (FAILED(stopHr) &&
+            runtimeHealthy_.load()) {
+            recordRuntimeFailure(
+                L"IAudioClient::Stop failed");
+        }
+
+        if (!updateWaveSizes(
+                out,
+                dataSizeOffset,
+                static_cast<std::uint32_t>(
+                    (std::min<std::uint64_t>)(
+                        totalDataBytes,
+                        0xFFFFFFFFull))) &&
+            runtimeHealthy_.load()) {
+            recordRuntimeFailure(
+                L"Cannot finalize game_audio.wav header");
+        }
+
         out.close();
     }
 
