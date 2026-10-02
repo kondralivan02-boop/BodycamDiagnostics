@@ -213,6 +213,43 @@ bool PresentMonController::start(DWORD targetPid,
     return true;
 }
 
+bool PresentMonController::healthy(std::wstring* event) {
+    if (!process_) {
+        if (event)
+            *event = L"PresentMon process handle is unavailable";
+        return false;
+    }
+
+    const DWORD wait = WaitForSingleObject(process_, 0);
+    if (wait == WAIT_TIMEOUT)
+        return true;
+
+    if (wait == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        GetExitCodeProcess(process_, &exitCode);
+        CloseHandle(process_);
+        process_ = nullptr;
+
+        if (event) {
+            *event =
+                L"PresentMon exited during capture with code " +
+                std::to_wstring(exitCode);
+        }
+        return false;
+    }
+
+    const DWORD waitError = GetLastError();
+    CloseHandle(process_);
+    process_ = nullptr;
+
+    if (event) {
+        *event =
+            L"PresentMon capture health check failed: " +
+            std::to_wstring(waitError);
+    }
+    return false;
+}
+
 void PresentMonController::stop() {
     if (!process_) return;
 

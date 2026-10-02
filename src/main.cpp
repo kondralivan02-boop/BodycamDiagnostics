@@ -1074,12 +1074,56 @@ void updateLiveOverlay() {
         return;
     }
 
+    if (gPresentMon) {
+        std::wstring presentMonEvent;
+        if (!gPresentMon->healthy(&presentMonEvent)) {
+            logEvent(
+                L"Обязательный источник потерян  •  " +
+                (presentMonEvent.empty()
+                    ? std::wstring(L"PresentMon unavailable")
+                    : presentMonEvent));
+
+            gEnvironmentCapabilities.sources.push_back({
+                "presentmon_runtime",
+                "failed_during_capture",
+                0,
+                false,
+                "Mandatory PresentMon source exited after startup"
+            });
+
+            stopSession();
+            return;
+        }
+    }
+
     if (gRecorder) {
         std::wstring recorderEvent;
-        gRecorder->maintain(&recorderEvent);
+        const bool recorderHealthy =
+            gRecorder->maintain(&recorderEvent);
+
         if (!recorderEvent.empty()) {
             gRecorderTimelineContinuous = false;
             logEvent(recorderEvent);
+        }
+
+        if (!recorderHealthy) {
+            if (recorderEvent.empty()) {
+                logEvent(
+                    L"Обязательный источник потерян  •  "
+                    L"NVENC video unavailable");
+            }
+
+            gRecorderTimelineContinuous = false;
+            gEnvironmentCapabilities.sources.push_back({
+                "nvenc_video_runtime",
+                "failed_during_capture",
+                0,
+                false,
+                "Mandatory FFmpeg recorder could not continue capture"
+            });
+
+            stopSession();
+            return;
         }
     }
 
