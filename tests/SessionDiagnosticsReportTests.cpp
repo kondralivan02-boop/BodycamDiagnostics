@@ -55,6 +55,8 @@ int main() {
     const auto json = readAll(jsonPath);
     const auto text = readAll(textPath);
 
+    check(json.find("\"schema_version\": 2") != std::string::npos,
+          "session diagnostics schema must be version 2 after indicator fields were added");
     check(json.find("\"signal_counts\"") != std::string::npos,
           "JSON must contain low-level signal counts");
     check(json.find("\"diagnostic_indicator_counts\"") != std::string::npos,
