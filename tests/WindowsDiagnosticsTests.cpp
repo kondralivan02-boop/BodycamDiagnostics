@@ -79,6 +79,14 @@ int main(int argc, char** argv) {
     const auto separateParts = validateTestSession(
         runtimeSession, durationMetrics, 10.0, false, true, 10.0, false, {5.0, 5.0});
     check(separateParts.valid, "separate completed intervals must validate independently");
+    const auto shortPart = validateTestSession(
+        runtimeSession, durationMetrics, 10.0, false, true, 0.5, false, {0.5});
+    check(shortPart.videoDurationChecked && shortPart.videoDurationSeconds > 0.0,
+          "short recording must actually be probed before claiming checked duration");
+    const auto untrustedShortPart = validateTestSession(
+        runtimeSession, durationMetrics, 10.0, false, false, 0.5, false, {0.5});
+    check(!untrustedShortPart.valid && !untrustedShortPart.videoDurationChecked,
+          "short recording duration must not bypass FFmpeg trust");
     const auto caps = probeEnvironmentCapabilities(GetCurrentProcessId());
     check(caps.sources.size() == 3, "both channels probed independently");
     check(caps.sources.front().status == "available", "current process query");

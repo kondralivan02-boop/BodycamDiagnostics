@@ -636,6 +636,9 @@ void stopSession() {
 
     const auto runtimeManifest =
         appDir() / L"runtime-tools.sha256";
+    const char* noVideoDetail = gRecording.hadFailure()
+        ? "Recording was requested but did not start"
+        : "Video was disabled";
     const bool ffmpegTrustedForFinalization =
         !gRecording.intervals().empty() && runtimeToolTrusted(
             gRuntimeFfmpegExe,
@@ -646,14 +649,16 @@ void stopSession() {
         gRecording.intervals().empty() ? "skipped" : (ffmpegTrustedForFinalization ? "verified" : "failed"),
         0,
         true,
-        gRecording.intervals().empty() ? "Video was disabled" : (ffmpegTrustedForFinalization
+        gRecording.intervals().empty() ? noVideoDetail : (ffmpegTrustedForFinalization
             ? "FFmpeg SHA-256 revalidated immediately before finalization"
             : "FFmpeg or runtime manifest changed after startup; external finalization blocked")
     });
 
     std::wstring muxError;
     if (gRecording.intervals().empty()) {
-        logEvent(L"Видео выключено  •  обработка не требуется");
+        logEvent(gRecording.hadFailure()
+            ? L"Видео: запись запрашивалась, но ни один интервал не начался"
+            : L"Видео выключено  •  обработка не требуется");
     } else if (!ffmpegTrustedForFinalization) {
         logEvent(
             L"Финализация видео заблокирована  •  "
@@ -756,7 +761,7 @@ void stopSession() {
         gRecording.intervals().empty() ? "skipped" : (ffmpegTrustedForProbe ? "verified" : "failed"),
         0,
         true,
-        gRecording.intervals().empty() ? "Video was disabled" : (ffmpegTrustedForProbe
+        gRecording.intervals().empty() ? noVideoDetail : (ffmpegTrustedForProbe
             ? "FFmpeg SHA-256 revalidated immediately before duration probe"
             : "FFmpeg or runtime manifest changed after finalization; duration probe blocked")
     });
@@ -969,10 +974,25 @@ void toggleRecording() {
         updateControlsForRunningState();
         return;
     }
-    gRecorder = std::make_unique<RecorderController>(gRuntimeFfmpegExe);
-    std::wstring error;
     const auto partDirectory = gSession->sessionPath() / L"video" /
         (L"part_" + std::to_wstring(gRecording.intervals().size() + 1));
+    std::error_code partError;
+    const bool previousAttemptExists = std::filesystem::exists(partDirectory, partError);
+    if (!partError && previousAttemptExists) {
+        const auto failedAttempt = partDirectory.parent_path() /
+            (partDirectory.filename().wstring() + L"_failed_start_" + std::to_wstring(GetTickCount64()));
+        std::filesystem::rename(partDirectory, failedAttempt, partError);
+        if (!partError)
+            logEvent(L"Предыдущая попытка записи сохранена  •  " + failedAttempt.filename().wstring());
+    }
+    if (partError) {
+        gRecording.lost(std::chrono::steady_clock::now());
+        logEvent(L"Видео: не удалось сохранить предыдущую попытку записи  •  " + std::to_wstring(partError.value()));
+        updateControlsForRunningState();
+        return;
+    }
+    gRecorder = std::make_unique<RecorderController>(gRuntimeFfmpegExe);
+    std::wstring error;
     if (!gRecorder->start(partDirectory, &error)) {
         gRecorder.reset();
         gRecording.lost(std::chrono::steady_clock::now());

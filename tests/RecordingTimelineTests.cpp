@@ -23,4 +23,8 @@ int main() {
     failedStart.lost(base + std::chrono::seconds(1));
     check(failedStart.hadFailure());
     check(failedStart.intervals().empty());
+    failedStart.start(base + std::chrono::seconds(2));
+    failedStart.stop(base + std::chrono::seconds(3));
+    check(failedStart.hadFailure());
+    check(failedStart.requestedSeconds() == 1.0);
 }

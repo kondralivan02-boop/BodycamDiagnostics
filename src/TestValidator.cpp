@@ -269,22 +269,20 @@ TestValidationResult validateTestSession(
                 continue;
             }
             if (!hasAudio) result.warnings.push_back(L"Фрагмент видео без игрового звука");
-            if (requestedIntervals[index] > 1.0) {
-                if (!ffmpegTrustedForProbe) {
-                    result.issues.push_back(L"FFmpeg не проверен; длительность фрагмента неизвестна");
-                    result.videoDurationChecked = false;
-                    continue;
-                }
-                double duration = 0.0;
-                if (!probeVideoDurationSeconds(defaultFfmpegPath(sessionPath), part, sessionPath, duration)) {
-                    result.issues.push_back(L"Не удалось измерить длительность фрагмента " + std::to_wstring(index + 1));
-                    result.videoDurationChecked = false;
-                    continue;
-                }
-                result.videoDurationSeconds += duration;
-                if (duration / requestedIntervals[index] < 0.90)
-                    result.issues.push_back(L"Фрагмент видео " + std::to_wstring(index + 1) + L" короче запрошенного интервала");
+            if (!ffmpegTrustedForProbe) {
+                result.issues.push_back(L"FFmpeg не проверен; длительность фрагмента неизвестна");
+                result.videoDurationChecked = false;
+                continue;
             }
+            double duration = 0.0;
+            if (!probeVideoDurationSeconds(defaultFfmpegPath(sessionPath), part, sessionPath, duration)) {
+                result.issues.push_back(L"Не удалось измерить длительность фрагмента " + std::to_wstring(index + 1));
+                result.videoDurationChecked = false;
+                continue;
+            }
+            result.videoDurationSeconds += duration;
+            if (requestedIntervals[index] > 0.0 && duration / requestedIntervals[index] < 0.90)
+                result.issues.push_back(L"Фрагмент видео " + std::to_wstring(index + 1) + L" короче запрошенного интервала");
         }
         if (requestedVideoSeconds > 0.0)
             result.videoCoverageRatio = result.videoDurationSeconds / requestedVideoSeconds;
