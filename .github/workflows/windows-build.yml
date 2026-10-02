@@ -58,6 +58,8 @@ jobs:
           Copy-Item EnableFullscreenOverlay.cmd dist/EnableFullscreenOverlay.cmd
           Copy-Item settings.example.ini dist/settings.example.ini
           Copy-Item СПРАВКА.txt dist/СПРАВКА.txt
+          $helpText = Get-Content -Raw -Encoding UTF8 dist/СПРАВКА.txt
+          if ($helpText -notmatch 'F8' -or $helpText -notmatch 'Gizmo' -or $helpText -notmatch 'VALID') { throw 'Russian help is incomplete' }
           Copy-Item runtime-tools.sha256 dist/runtime-tools.sha256
           Copy-Item runtime-tools.sources.json dist/runtime-tools.sources.json
           Copy-Item InstallRuntimeTools.ps1 dist/InstallRuntimeTools.ps1
