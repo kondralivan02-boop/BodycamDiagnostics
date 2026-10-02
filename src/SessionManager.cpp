@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <chrono>
+#include <exception>
 #include <iomanip>
 #include <sstream>
 #include <string_view>
@@ -188,11 +189,22 @@ bool SessionManager::start(
 }
 
 void SessionManager::stop() {
-    if (!running_) return;
+    if (!running_)
+        return;
 
     log(L"Session stopped");
-    writeState(L"stopped");
     running_ = false;
+
+    std::wstring stateError;
+    if (!writeState(L"stopped", &stateError) &&
+        logFile_.is_open()) {
+        logFile_
+            << "[" << utf8(timestamp(false)) << "] "
+            << "Final session state publication failed: "
+            << utf8(stateError)
+            << "\r\n";
+        logFile_.flush();
+    }
 
     if (logFile_.is_open())
         logFile_.close();

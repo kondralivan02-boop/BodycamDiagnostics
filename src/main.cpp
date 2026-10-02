@@ -363,7 +363,13 @@ void startSession() {
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
-    writeSystemSnapshot(gSession->sessionPath() / L"system.json");
+    if (writeSystemSnapshot(
+            gSession->sessionPath() / L"system.json")) {
+        logEvent(L"System snapshot  •  saved");
+    } else {
+        logEvent(L"System snapshot недоступен");
+    }
+
     logEvent(L"Сессия создана  •  " + presetName);
     logEvent(L"Bodycam PID  •  " + std::to_wstring(bodycam.pid));
 
