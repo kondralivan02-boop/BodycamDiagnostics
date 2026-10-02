@@ -1,0 +1,7 @@
+#pragma once
+
+namespace bodycam::build {
+inline constexpr const char* kCommitSha = "@BODYCAM_BUILD_SHA@";
+inline constexpr const char* kBranch = "@BODYCAM_BUILD_BRANCH@";
+inline constexpr const char* kCiRun = "@BODYCAM_BUILD_RUN@";
+}

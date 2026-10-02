@@ -15,6 +15,14 @@ configure_file(
     "${CMAKE_BINARY_DIR}/generated/RuntimeToolTrustAnchor.h"
     @ONLY)
 
+set(BODYCAM_BUILD_SHA "unknown" CACHE STRING "BodycamDiagnostics source commit")
+set(BODYCAM_BUILD_BRANCH "unknown" CACHE STRING "BodycamDiagnostics source branch")
+set(BODYCAM_BUILD_RUN "unknown" CACHE STRING "BodycamDiagnostics CI run")
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/BuildInfoGenerated.h.in"
+    "${CMAKE_BINARY_DIR}/generated/BuildInfoGenerated.h"
+    @ONLY)
+
 add_executable(BodycamDiagnostics WIN32
     src/main.cpp
     src/SessionManager.cpp
