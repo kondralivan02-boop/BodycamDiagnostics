@@ -316,7 +316,10 @@ void startSession() {
         ffmpegExe,
         runtimeRoot / L"runtime-tools.sha256");
 
-    if (!preflight.presentMonFound || !preflight.presentMonTrusted || !preflight.recordingReady()) {
+    if (!preflight.hashManifestTrusted ||
+        !preflight.presentMonFound ||
+        !preflight.presentMonTrusted ||
+        !preflight.recordingReady()) {
         const std::wstring message =
             L"Предварительная проверка не пройдена:\n\n" +
             preflight.details +

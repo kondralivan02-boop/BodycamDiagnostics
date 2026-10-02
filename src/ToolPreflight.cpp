@@ -1,4 +1,5 @@
 #include "ToolPreflight.h"
+#include "RuntimeToolTrustAnchor.h"
 #include <Windows.h>
 #include <bcrypt.h>
 #include <fstream>
@@ -244,10 +245,30 @@ ToolPreflightResult runToolPreflight(
     ec.clear();
     r.hashManifestFound = std::filesystem::is_regular_file(hashManifest, ec);
 
+    const auto actualManifestSha256 =
+        r.hashManifestFound
+            ? fileSha256Hex(hashManifest)
+            : std::string{};
+
+    r.hashManifestTrusted =
+        r.hashManifestFound &&
+        !actualManifestSha256.empty() &&
+        lowerAscii(actualManifestSha256) ==
+            lowerAscii(kRuntimeToolsManifestSha256);
+
     const auto expectedPresentMon =
-        expectedRuntimeToolSha256(hashManifest, presentMonExe.filename());
+        r.hashManifestTrusted
+            ? expectedRuntimeToolSha256(
+                  hashManifest,
+                  presentMonExe.filename())
+            : std::string{};
+
     const auto expectedFfmpeg =
-        expectedRuntimeToolSha256(hashManifest, ffmpegExe.filename());
+        r.hashManifestTrusted
+            ? expectedRuntimeToolSha256(
+                  hashManifest,
+                  ffmpegExe.filename())
+            : std::string{};
 
     if (r.presentMonFound && !expectedPresentMon.empty())
         r.presentMonTrusted = fileSha256Hex(presentMonExe) == expectedPresentMon;
@@ -256,7 +277,12 @@ ToolPreflightResult runToolPreflight(
 
     std::wstring d;
     d += L"Runtime hash manifest: ";
-    d += r.hashManifestFound ? L"OK" : L"MISSING";
+    if (!r.hashManifestFound)
+        d += L"MISSING";
+    else if (r.hashManifestTrusted)
+        d += L"OK (build-anchored)";
+    else
+        d += L"FOUND (build-anchor mismatch)";
     d += L"\n";
     d += L"PresentMon: ";
     d += r.presentMonFound ? (r.presentMonTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";

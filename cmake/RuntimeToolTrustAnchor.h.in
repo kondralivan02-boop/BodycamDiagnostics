@@ -1,0 +1,4 @@
+#pragma once
+
+inline constexpr const char* kRuntimeToolsManifestSha256 =
+    "@BODYCAM_RUNTIME_TOOLS_MANIFEST_SHA256@";

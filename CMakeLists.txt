@@ -5,6 +5,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+file(
+    SHA256
+    "${CMAKE_SOURCE_DIR}/runtime-tools.sha256"
+    BODYCAM_RUNTIME_TOOLS_MANIFEST_SHA256)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/RuntimeToolTrustAnchor.h.in"
+    "${CMAKE_BINARY_DIR}/generated/RuntimeToolTrustAnchor.h"
+    @ONLY)
+
 add_executable(BodycamDiagnostics WIN32
     src/main.cpp
     src/SessionManager.cpp
@@ -43,7 +53,10 @@ target_compile_definitions(BodycamFullscreenOverlay PRIVATE UNICODE _UNICODE WIN
 target_link_libraries(BodycamFullscreenOverlay PRIVATE user32 gdi32 advapi32)
 
 
-target_include_directories(BodycamDiagnostics PRIVATE src)
+target_include_directories(
+    BodycamDiagnostics PRIVATE
+    src
+    "${CMAKE_BINARY_DIR}/generated")
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt)
 
@@ -68,7 +81,10 @@ if(BUILD_TESTING)
     target_include_directories(DiagnosticEvidenceTests PRIVATE src)
     add_test(NAME DiagnosticEvidenceTests COMMAND DiagnosticEvidenceTests)
     add_executable(ToolPreflightTests tests/ToolPreflightTests.cpp src/ToolPreflight.cpp)
-    target_include_directories(ToolPreflightTests PRIVATE src)
+    target_include_directories(
+        ToolPreflightTests PRIVATE
+        src
+        "${CMAKE_BINARY_DIR}/generated")
     target_compile_definitions(ToolPreflightTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(ToolPreflightTests PRIVATE bcrypt)
     add_test(NAME ToolPreflightTests COMMAND ToolPreflightTests "${CMAKE_SOURCE_DIR}/runtime-tools.sha256")
