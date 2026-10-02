@@ -58,6 +58,15 @@ int wmain(int argc, wchar_t** argv) {
     check(readAll(root / L"video_capture.log") == "ffmpeg warning evidence",
           "preserved FFmpeg log must keep original evidence");
 
+    const auto muxArgs =
+        readAll(root / L"mux_fixture_args.txt");
+    check(muxArgs.find("-af") != std::string::npos,
+          "audio mux must configure an audio filter");
+    check(muxArgs.find("apad") != std::string::npos,
+          "short optional audio must be padded instead of truncating video");
+    check(muxArgs.find("-shortest") != std::string::npos,
+          "mux must still stop at the mandatory video duration");
+
 
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root / L"video");
