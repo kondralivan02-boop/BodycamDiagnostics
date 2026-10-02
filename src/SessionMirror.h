@@ -16,6 +16,7 @@ public:
     void stop();
 
     bool running() const noexcept { return running_.load(); }
+    bool healthy(std::wstring* error = nullptr) const;
     const std::filesystem::path& targetPath() const noexcept { return targetSession_; }
 
 private:
