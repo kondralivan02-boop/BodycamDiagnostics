@@ -212,7 +212,7 @@ bool writeSessionDiagnosticsReport(
 
     json << std::fixed << std::setprecision(3);
     json << "{\n";
-    json << "  \"schema_version\": 1,\n";
+    json << "  \"schema_version\": 2,\n";
     json << "  \"capture_status\": \""
          << (result.captureValid ? "VALID" : "INVALID")
          << "\",\n";
