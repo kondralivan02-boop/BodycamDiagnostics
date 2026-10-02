@@ -149,7 +149,7 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
             L"-i " + quote(audioFile.wstring()) + L" "
             L"-map 0:v:0 -map 1:a:0 "
             L"-c:v copy -c:a aac -b:a 192k -ar 48000 "
-            L"-shortest ";
+            L"-af apad -shortest ";
     } else {
         args +=
             L"-map 0:v:0 -c:v copy ";
