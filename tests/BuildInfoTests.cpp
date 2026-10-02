@@ -31,9 +31,9 @@ int main() {
           "build_info.json must exist");
 
     std::ifstream in(path, std::ios::binary);
-    const std::string text(
+    const std::string text{
         std::istreambuf_iterator<char>(in),
-        std::istreambuf_iterator<char>());
+        std::istreambuf_iterator<char>()};
 
     check(text.find("\"schema_version\": 1") != std::string::npos,
           "build info schema version is missing");
