@@ -87,7 +87,8 @@ using AtomicWideOutputFile =
 inline bool atomicCopyFile(
     const std::filesystem::path& source,
     const std::filesystem::path& target,
-    std::wstring* error = nullptr) {
+    std::wstring* error = nullptr,
+    bool allowMissingSource = false) {
 
     const auto temporary =
         std::filesystem::path(target.wstring() + L".tmp");
@@ -103,12 +104,19 @@ inline bool atomicCopyFile(
         ec);
 
     if (ec) {
+        const auto copyError = ec;
+        std::filesystem::remove(temporary, ec);
+
+        if (allowMissingSource &&
+            copyError == std::errc::no_such_file_or_directory) {
+            return true;
+        }
+
         if (error) {
             *error =
                 L"Cannot copy temporary evidence file: " +
-                std::to_wstring(ec.value());
+                std::to_wstring(copyError.value());
         }
-        std::filesystem::remove(temporary, ec);
         return false;
     }
 

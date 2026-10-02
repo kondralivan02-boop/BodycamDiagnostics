@@ -36,10 +36,21 @@ bool SessionMirror::start(std::wstring* error) {
     return true;
 }
 
-void SessionMirror::stop() {
+bool SessionMirror::stop(std::wstring* error) {
     running_.store(false);
-    if (thread_.joinable()) thread_.join();
-    syncOnce(true);
+    if (thread_.joinable())
+        thread_.join();
+
+    const bool finalSyncOk =
+        syncOnce(true);
+
+    if (!finalSyncOk || !healthy(error)) {
+        if (error && error->empty())
+            *error = L"Persistent mirror final sync failed";
+        return false;
+    }
+
+    return true;
 }
 
 bool SessionMirror::healthy(std::wstring* error) const {
@@ -104,7 +115,8 @@ bool SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
     if (!atomicCopyFile(
             source,
             target,
-            &copyError)) {
+            &copyError,
+            true)) {
         recordFailure(ERROR_WRITE_FAULT);
         return false;
     }

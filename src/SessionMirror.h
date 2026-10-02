@@ -13,7 +13,7 @@ public:
     ~SessionMirror();
 
     bool start(std::wstring* error = nullptr);
-    void stop();
+    bool stop(std::wstring* error = nullptr);
 
     bool running() const noexcept { return running_.load(); }
     bool healthy(std::wstring* error = nullptr) const;

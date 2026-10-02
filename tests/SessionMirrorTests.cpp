@@ -42,7 +42,11 @@ int main() {
         std::wstring startError;
         check(mirror.start(&startError),
               "mirror must start for final video sync");
-        mirror.stop();
+        std::wstring stopError;
+        check(mirror.stop(&stopError),
+              "final mirror sync must succeed");
+        check(stopError.empty(),
+              "successful final mirror sync must not report an error");
 
         const auto target = mirror.targetPath();
         check(std::filesystem::is_regular_file(
@@ -97,7 +101,11 @@ int main() {
         check(!healthError.empty(),
               "mirror runtime failure must include diagnostics");
 
-        mirror.stop();
+        std::wstring stopError;
+        check(!mirror.stop(&stopError),
+              "final mirror sync must expose prior runtime failure");
+        check(!stopError.empty(),
+              "failed final mirror sync must preserve diagnostics");
     }
 
     std::filesystem::remove_all(root, ec);

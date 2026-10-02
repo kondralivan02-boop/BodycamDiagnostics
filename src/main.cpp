@@ -797,7 +797,14 @@ void stopSession() {
         gLastReportPath.clear();
 
     if (gMirror) {
-        gMirror->stop();
+        std::wstring mirrorStopError;
+        if (!gMirror->stop(&mirrorStopError)) {
+            appendUiLog(
+                L"Persistent mirror final sync FAILED  •  " +
+                (mirrorStopError.empty()
+                    ? std::wstring(L"unknown mirror error")
+                    : mirrorStopError));
+        }
         gMirror.reset();
     }
 
