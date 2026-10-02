@@ -3,6 +3,7 @@
 #include <Windows.h>
 #include <winevt.h>
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iomanip>
 #include <locale>
@@ -172,6 +173,159 @@ EventLogCollection collectWindowsEvents(std::chrono::system_clock::time_point st
     }
     return result;
 }
+
+InfrastructureEvidenceSummary analyzeInfrastructureEvents(
+    const EventLogCollection& result) {
+
+    InfrastructureEvidenceSummary summary;
+
+    auto lowerAscii = [](std::string value) {
+        std::transform(
+            value.begin(),
+            value.end(),
+            value.begin(),
+            [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+        return value;
+    };
+
+    for (const auto& event : result.events) {
+        const auto provider = lowerAscii(event.provider);
+        const auto xml = lowerAscii(event.xml);
+
+        if (provider.find("iscsi") != std::string::npos)
+            ++summary.iscsiEvents;
+
+        if (provider == "disk" && event.eventId == 153)
+            ++summary.diskRetryEvents;
+
+        const bool realtekAdapter =
+            xml.find("realtek pcie gbe family controller") !=
+            std::string::npos;
+        const bool resetEvidence =
+            xml.find("resetcount") != std::string::npos ||
+            xml.find("reset count") != std::string::npos;
+
+        if (realtekAdapter && resetEvidence)
+            ++summary.networkResetEvents;
+
+        if (provider.find("dns-client") != std::string::npos &&
+            event.eventId == 1014) {
+            ++summary.dnsTimeoutEvents;
+        }
+    }
+
+    const bool storagePathEvidence =
+        summary.iscsiEvents > 0 && summary.diskRetryEvents > 0;
+    const bool networkStorageEvidence =
+        summary.iscsiEvents > 0 && summary.networkResetEvents > 0;
+
+    summary.instabilityObserved =
+        storagePathEvidence || networkStorageEvidence;
+
+    if (summary.iscsiEvents > 0)
+        summary.findings.push_back(
+            "iSCSI error events observed during the session");
+
+    if (summary.networkResetEvents > 0)
+        summary.findings.push_back(
+            "Realtek network-adapter reset evidence observed during the session");
+
+    if (summary.diskRetryEvents > 0)
+        summary.findings.push_back(
+            "Disk event 153 retry evidence observed during the session");
+
+    if (summary.dnsTimeoutEvents > 0)
+        summary.findings.push_back(
+            "DNS Client event 1014 timeout evidence observed during the session");
+
+    if (summary.instabilityObserved) {
+        summary.findings.push_back(
+            "Multiple independent Windows event sources indicate external network/storage-path instability; temporal association does not prove root cause");
+    }
+
+    return summary;
+}
+
+bool writeInfrastructureEvidenceReport(
+    const InfrastructureEvidenceSummary& summary,
+    const std::filesystem::path& jsonOutput,
+    const std::filesystem::path& textOutput,
+    std::wstring* error) {
+
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
+        if (error)
+            *error = L"Cannot create infrastructure_evidence.json";
+        return false;
+    }
+
+    json << "{\n"
+         << "  \"schema_version\": 1,\n"
+         << "  \"instability_observed\": "
+         << (summary.instabilityObserved ? "true" : "false")
+         << ",\n"
+         << "  \"iscsi_events\": " << summary.iscsiEvents << ",\n"
+         << "  \"network_reset_events\": " << summary.networkResetEvents << ",\n"
+         << "  \"disk_retry_event_153\": " << summary.diskRetryEvents << ",\n"
+         << "  \"dns_timeout_event_1014\": " << summary.dnsTimeoutEvents << ",\n"
+         << "  \"findings\": [";
+
+    for (std::size_t i = 0; i < summary.findings.size(); ++i) {
+        if (i)
+            json << ",";
+        json << "\n    " << jsonQuoted(summary.findings[i]);
+    }
+
+    if (!summary.findings.empty())
+        json << "\n  ";
+
+    json << "],\n"
+         << "  \"interpretation\": "
+         << jsonQuoted(
+                "Observed Windows evidence only. It can identify external contamination but does not prove which device, driver, switch, server, storage target, or management software caused it.")
+         << "\n}\n";
+
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
+        if (error)
+            *error = L"Cannot create infrastructure_evidence.txt";
+        return false;
+    }
+
+    text << "INFRASTRUCTURE EVIDENCE\n"
+         << "Status: "
+         << (summary.instabilityObserved
+                ? "EXTERNAL INSTABILITY OBSERVED"
+                : "NO MULTI-SOURCE INSTABILITY PATTERN")
+         << "\n"
+         << "iSCSI events: " << summary.iscsiEvents << "\n"
+         << "Network reset events: " << summary.networkResetEvents << "\n"
+         << "Disk event 153: " << summary.diskRetryEvents << "\n"
+         << "DNS event 1014: " << summary.dnsTimeoutEvents << "\n";
+
+    for (const auto& finding : summary.findings)
+        text << "- " << finding << "\n";
+
+    text << "Interpretation: temporal/event-source association only; root cause is not proven.\n";
+
+    if (!json || !text) {
+        if (error)
+            *error = L"Failed while writing infrastructure evidence report";
+        return false;
+    }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
+
+    return true;
+}
+
 bool writeWindowsEventReport(const EventLogCollection& result, const StutterCorrelationResult& stutters,
                              std::chrono::system_clock::time_point presentMonStart,
                              std::chrono::system_clock::time_point sessionStart,

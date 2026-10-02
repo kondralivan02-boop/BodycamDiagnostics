@@ -803,6 +803,27 @@ void stopSession() {
         sessionPath / L"windows_events.json");
     logEvent(eventReportWritten ? L"Windows Event Log report saved (optional evidence)" : L"Cannot save Windows Event Log report");
 
+    const auto infrastructureEvidence =
+        analyzeInfrastructureEvents(windowsEvents);
+    std::wstring infrastructureEvidenceError;
+    const bool infrastructureEvidenceWritten =
+        writeInfrastructureEvidenceReport(
+            infrastructureEvidence,
+            sessionPath / L"infrastructure_evidence.json",
+            sessionPath / L"infrastructure_evidence.txt",
+            &infrastructureEvidenceError);
+
+    if (infrastructureEvidenceWritten) {
+        logEvent(
+            infrastructureEvidence.instabilityObserved
+                ? L"Infrastructure evidence  •  EXTERNAL INSTABILITY OBSERVED"
+                : L"Infrastructure evidence  •  no multi-source fault pattern");
+    } else {
+        logEvent(
+            L"Cannot save infrastructure evidence report  •  " +
+            infrastructureEvidenceError);
+    }
+
     for (const auto& source : windowsEvents.channels) {
         for (auto& observed : gEnvironmentCapabilities.sources)
             if (observed.source == source.source) observed = source;
@@ -823,6 +844,10 @@ void stopSession() {
     else
         sessionDiagnostics.diagnosticLimitations.push_back(L"Video stutter bookmarks unavailable because stable clock and uninterrupted recorder timeline were not both confirmed");
     sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
+    if (infrastructureEvidence.instabilityObserved)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"External network/storage-path instability evidence observed; performance comparison may be contaminated; see infrastructure_evidence.txt");
+    if (!infrastructureEvidenceWritten)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Optional infrastructure evidence report could not be written");
     if (!eventReportWritten)
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Windows Event Log report could not be written");
     for (const auto& channel : windowsEvents.channels) {

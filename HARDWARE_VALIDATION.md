@@ -104,3 +104,21 @@ Compare the four configurations using the same evidence hierarchy:
 6. video bookmarks only when timeline alignment is reported as available
 
 Do not treat generated FPS alone as a smoothness result.
+
+
+## 7. External infrastructure contamination
+
+The report now writes `infrastructure_evidence.json` and
+`infrastructure_evidence.txt` from the same optional Windows Event Log
+evidence already captured for the session.
+
+The summary specifically counts observed iSCSI errors, Realtek adapter-reset
+evidence, disk Event ID 153 retries and DNS Client Event ID 1014 timeouts.
+
+`EXTERNAL INSTABILITY OBSERVED` means that multiple independent Windows
+event sources formed a network/storage-path fault pattern during the session.
+It marks the run as unsuitable for clean DLSS/FG comparison unless the user
+can isolate a stable gameplay interval.
+
+This is evidence classification only. It does not attribute root cause to
+Bodycam, Gizmo, the NIC, a driver, a switch, the iSCSI server or storage.

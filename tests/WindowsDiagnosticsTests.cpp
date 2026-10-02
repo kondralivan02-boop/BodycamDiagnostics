@@ -90,6 +90,36 @@ int main(int argc, char** argv) {
     stalls.events.push_back(stall);
     check(writeWindowsEventReport(partial, stalls, now, now, now + std::chrono::seconds(10), true, false, root / L"windows_events_partial.json"), "partial report");
     check(writeWindowsEventReport(partial, stalls, now, now, now + std::chrono::seconds(10), false, false, root / L"windows_events_clock_change.json"), "clock change report");
+
+    EventLogCollection infrastructureFixture;
+    infrastructureFixture.events.push_back({
+        "System", "iScsiPrt", 20, 1, baseMs + 1000, "<Event/>"});
+    infrastructureFixture.events.push_back({
+        "System", "disk", 153, 2, baseMs + 2000, "<Event/>"});
+    infrastructureFixture.events.push_back({
+        "System", "rt640x64", 27, 3, baseMs + 1500,
+        "<Event><Data>Realtek PCIe GbE Family Controller</Data><Data Name=\"ResetCount\">6</Data></Event>"});
+    infrastructureFixture.events.push_back({
+        "System", "Microsoft-Windows-DNS-Client", 1014, 4, baseMs + 2500, "<Event/>"});
+
+    const auto infrastructure =
+        analyzeInfrastructureEvents(infrastructureFixture);
+    check(infrastructure.instabilityObserved,
+          "multi-source iSCSI/network/disk evidence must be classified as external instability");
+    check(infrastructure.iscsiEvents == 1,
+          "iSCSI event count");
+    check(infrastructure.networkResetEvents == 1,
+          "network reset event count");
+    check(infrastructure.diskRetryEvents == 1,
+          "disk retry event count");
+    check(infrastructure.dnsTimeoutEvents == 1,
+          "DNS timeout event count");
+    check(writeInfrastructureEvidenceReport(
+              infrastructure,
+              root / L"infrastructure_evidence.json",
+              root / L"infrastructure_evidence.txt"),
+          "write infrastructure evidence report");
+
     check(writeTestValidationReport(valid, root / L"validation.json", root / L"validation.txt"), "write warning report");
     // Leave fixtures for the CI JSON parser, then remove with that step.
     std::cout << "REPORT_FIXTURES=" << root.string() << '\n';
