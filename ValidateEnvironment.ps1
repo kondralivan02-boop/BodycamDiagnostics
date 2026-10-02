@@ -83,7 +83,8 @@ $nvencSmoke = $null
 
 if (-not $SkipToolExecution -and $presentMon.trusted) {
     $pm = Invoke-Capture { & $presentMonPath --help }
-    $presentMonHelp = ($pm.exitCode -eq 0 -and $pm.output -match 'PresentMon')
+    # PresentMon intentionally returns 1 after printing --help; validate the help output itself.
+    $presentMonHelp = ($pm.output -match 'PresentMon')
 }
 
 if (-not $SkipToolExecution -and $ffmpeg.trusted) {
