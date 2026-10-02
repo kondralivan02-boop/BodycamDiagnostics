@@ -1,0 +1,63 @@
+#include "AudioVideoMuxer.h"
+
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+void check(bool ok, const char* message) {
+    if (!ok)
+        throw std::runtime_error(message);
+}
+
+std::string readAll(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>());
+}
+}
+
+int wmain(int argc, wchar_t** argv) {
+    check(argc == 2, "expected mux fixture path");
+
+    const std::filesystem::path fixture = argv[1];
+    check(std::filesystem::is_regular_file(fixture),
+          "mux fixture must exist");
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        L"BodycamDiagnostics-audio-video-muxer-test";
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / L"video");
+
+    {
+        std::ofstream(root / L"video" / L"video_00000.mkv", std::ios::binary)
+            << "raw video";
+        std::ofstream(root / L"video" / L"video_capture.log", std::ios::binary)
+            << "ffmpeg warning evidence";
+        std::ofstream(root / L"game_audio.wav", std::ios::binary)
+            << "raw audio";
+    }
+
+    std::wstring error;
+    const bool ok =
+        muxSessionVideoWithAudio(fixture, root, &error);
+
+    check(ok, "fake mux should complete successfully");
+    check(std::filesystem::is_regular_file(root / L"video_with_audio.mkv"),
+          "muxed output must remain");
+    check(!std::filesystem::exists(root / L"video"),
+          "raw video directory should be removed after successful mux");
+    check(std::filesystem::is_regular_file(root / L"video_capture.log"),
+          "FFmpeg capture log must survive raw video cleanup");
+    check(readAll(root / L"video_capture.log") == "ffmpeg warning evidence",
+          "preserved FFmpeg log must keep original evidence");
+
+    std::filesystem::remove_all(root, ec);
+    std::cout << "Audio/video muxer tests passed\n";
+}
