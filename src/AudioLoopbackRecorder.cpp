@@ -353,7 +353,12 @@ void AudioLoopbackRecorder::worker() {
                               static_cast<std::streamsize>(bytes));
                 }
 
-                captureClient->ReleaseBuffer(frames);
+                hr = captureClient->ReleaseBuffer(frames);
+                if (FAILED(hr)) {
+                    recordRuntimeFailure(
+                        L"IAudioCaptureClient::ReleaseBuffer failed");
+                    break;
+                }
 
                 totalDataBytes += bytes;
                 if (totalDataBytes > 0xFFFFFFFFull) {
