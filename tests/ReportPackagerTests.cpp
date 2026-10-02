@@ -21,9 +21,9 @@ void check(bool ok, const char* message) {
 
 std::vector<unsigned char> readAll(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
-    const std::vector<char> raw(
+    const std::vector<char> raw{
         std::istreambuf_iterator<char>(in),
-        std::istreambuf_iterator<char>());
+        std::istreambuf_iterator<char>()};
 
     return std::vector<unsigned char>(
         raw.begin(),
