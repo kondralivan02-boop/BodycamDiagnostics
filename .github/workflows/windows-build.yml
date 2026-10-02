@@ -13,12 +13,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/stable' }}
 
 jobs:
-  runner_probe:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Confirm runner startup
-        run: echo runner-started
-
   build:
     runs-on: windows-latest
     steps:
