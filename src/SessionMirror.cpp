@@ -56,7 +56,7 @@ bool SessionMirror::healthy(std::wstring* error) const {
 
 void SessionMirror::recordFailure(int errorCode) {
     if (errorCode == 0)
-        errorCode = ERROR_WRITE_FAULT;
+        errorCode = static_cast<int>(std::errc::io_error);
 
     int expected = 0;
     lastErrorCode_.compare_exchange_strong(
