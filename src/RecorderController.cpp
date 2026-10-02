@@ -157,6 +157,38 @@ bool RecorderController::launchCapture(std::wstring* error) {
     CloseHandle(pi.hThread);
     process_ = pi.hProcess;
     stdinWrite_ = stdinWrite;
+
+    const DWORD startupWait =
+        WaitForSingleObject(process_, 500);
+
+    if (startupWait == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        GetExitCodeProcess(process_, &exitCode);
+        closeChildHandles();
+
+        if (error) {
+            *error =
+                L"FFmpeg exited during startup with code " +
+                std::to_wstring(exitCode) +
+                L"; see video_capture.log";
+        }
+        return false;
+    }
+
+    if (startupWait == WAIT_FAILED) {
+        const DWORD waitError = GetLastError();
+        TerminateProcess(process_, 5);
+        WaitForSingleObject(process_, 500);
+        closeChildHandles();
+
+        if (error) {
+            *error =
+                L"FFmpeg startup liveness check failed: " +
+                std::to_wstring(waitError);
+        }
+        return false;
+    }
+
     return true;
 }
 
