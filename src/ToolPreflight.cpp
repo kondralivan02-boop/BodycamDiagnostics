@@ -1,5 +1,9 @@
 #include "ToolPreflight.h"
 #include <Windows.h>
+#include <bcrypt.h>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 #include <algorithm>
 #include <vector>
 
@@ -88,6 +92,72 @@ bool runAndCapture(const std::filesystem::path& exe, const std::wstring& args,
 bool containsAscii(const std::string& text, const char* needle) {
     return text.find(needle) != std::string::npos;
 }
+}
+
+std::string fileSha256Hex(const std::filesystem::path& file) {
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_HASH_HANDLE hash = nullptr;
+    DWORD objectBytes = 0;
+    DWORD hashBytes = 0;
+    DWORD cb = 0;
+
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+        return {};
+
+    auto closeAlg = [&]() { if (alg) BCryptCloseAlgorithmProvider(alg, 0); };
+    auto destroyHash = [&]() { if (hash) BCryptDestroyHash(hash); };
+
+    if (BCryptGetProperty(alg, BCRYPT_OBJECT_LENGTH,
+            reinterpret_cast<PUCHAR>(&objectBytes), sizeof(objectBytes), &cb, 0) < 0 ||
+        BCryptGetProperty(alg, BCRYPT_HASH_LENGTH,
+            reinterpret_cast<PUCHAR>(&hashBytes), sizeof(hashBytes), &cb, 0) < 0) {
+        closeAlg();
+        return {};
+    }
+
+    std::vector<UCHAR> object(objectBytes);
+    std::vector<UCHAR> digest(hashBytes);
+    if (BCryptCreateHash(alg, &hash, object.data(),
+            static_cast<ULONG>(object.size()), nullptr, 0, 0) < 0) {
+        closeAlg();
+        return {};
+    }
+
+    std::ifstream in(file, std::ios::binary);
+    if (!in) {
+        destroyHash();
+        closeAlg();
+        return {};
+    }
+
+    std::vector<char> buffer(1024 * 1024);
+    while (in) {
+        in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const auto got = in.gcount();
+        if (got > 0 && BCryptHashData(hash,
+                reinterpret_cast<PUCHAR>(buffer.data()),
+                static_cast<ULONG>(got), 0) < 0) {
+            destroyHash();
+            closeAlg();
+            return {};
+        }
+    }
+
+    if (!in.eof() || BCryptFinishHash(hash, digest.data(),
+            static_cast<ULONG>(digest.size()), 0) < 0) {
+        destroyHash();
+        closeAlg();
+        return {};
+    }
+
+    destroyHash();
+    closeAlg();
+
+    std::ostringstream out;
+    out << std::hex << std::setfill('0');
+    for (const auto byte : digest)
+        out << std::setw(2) << static_cast<unsigned>(byte);
+    return out.str();
 }
 
 std::filesystem::path resolveRuntimeTool(

@@ -44,7 +44,7 @@ target_link_libraries(BodycamFullscreenOverlay PRIVATE user32 gdi32 advapi32)
 
 target_include_directories(BodycamDiagnostics PRIVATE src)
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi)
+target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt)
 
 
 if(MSVC)
@@ -69,6 +69,7 @@ if(BUILD_TESTING)
     add_executable(ToolPreflightTests tests/ToolPreflightTests.cpp src/ToolPreflight.cpp)
     target_include_directories(ToolPreflightTests PRIVATE src)
     target_compile_definitions(ToolPreflightTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(ToolPreflightTests PRIVATE bcrypt)
     add_test(NAME ToolPreflightTests COMMAND ToolPreflightTests)
     add_executable(StutterIndicatorTests tests/StutterIndicatorTests.cpp src/StutterCorrelator.cpp)
     target_include_directories(StutterIndicatorTests PRIVATE src)
