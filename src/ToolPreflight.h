@@ -17,6 +17,9 @@ struct ToolPreflightResult {
 };
 
 std::string fileSha256Hex(const std::filesystem::path& file);
+std::string expectedRuntimeToolSha256(
+    const std::filesystem::path& manifest,
+    const std::filesystem::path& fileName);
 
 std::filesystem::path resolveRuntimeTool(
     const std::filesystem::path& appDirectory,
