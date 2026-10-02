@@ -67,6 +67,7 @@ void SessionMirror::syncOnce(bool finalPass) {
         L"system.json",
         L"presentmon.csv",
         L"telemetry.csv",
+        L"video\\video_capture.log",
         L"video_capture.log",
         L"summary.json",
         L"summary.txt",
