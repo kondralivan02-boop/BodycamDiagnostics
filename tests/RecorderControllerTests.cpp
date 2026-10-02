@@ -1,5 +1,7 @@
 #include "RecorderController.h"
 
+#include <Windows.h>
+
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -13,11 +15,15 @@ void check(bool ok, const char* message) {
 }
 
 int wmain(int argc, wchar_t** argv) {
-    check(argc == 2, "expected exit-fixture executable path");
+    check(argc == 3,
+          "expected immediate-exit and recovery-failure fixture paths");
 
-    const std::filesystem::path fixture = argv[1];
-    check(std::filesystem::is_regular_file(fixture),
-          "exit fixture must exist");
+    const std::filesystem::path immediate = argv[1];
+    const std::filesystem::path recoveryFailure = argv[2];
+    check(std::filesystem::is_regular_file(immediate),
+          "immediate exit fixture must exist");
+    check(std::filesystem::is_regular_file(recoveryFailure),
+          "recovery failure fixture must exist");
 
     const auto root =
         std::filesystem::temp_directory_path() /
@@ -27,21 +33,44 @@ int wmain(int argc, wchar_t** argv) {
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root);
 
-    RecorderController controller(fixture);
-    std::wstring error;
+    {
+        RecorderController controller(immediate);
+        std::wstring error;
 
-    const bool started =
-        controller.start(root / L"video", &error);
+        const bool started =
+            controller.start(root / L"video-immediate", &error);
 
-    check(!started,
-          "recorder must reject an FFmpeg process that exits during startup");
-    check(!controller.running(),
-          "recorder must clear process handles after startup failure");
-    check(error.find(L"exited during startup") != std::wstring::npos,
-          "startup failure must report the early FFmpeg exit");
+        check(!started,
+              "recorder must reject an FFmpeg process that exits during startup");
+        check(!controller.running(),
+              "recorder must clear process handles after startup failure");
+        check(error.find(L"exited during startup") != std::wstring::npos,
+              "startup failure must report the early FFmpeg exit");
+    }
 
-    controller.stop();
+    {
+        RecorderController controller(recoveryFailure);
+        std::wstring error;
+
+        const bool started =
+            controller.start(root / L"video-recovery", &error);
+
+        check(started,
+              "recovery fixture must survive recorder startup window");
+        check(controller.running(),
+              "recovery fixture must be tracked after startup");
+
+        Sleep(600);
+
+        std::wstring event;
+        check(!controller.maintain(&event),
+              "recorder must report terminal failure when restart fails");
+        check(!controller.running(),
+              "terminal recorder failure must leave recorder unavailable");
+        check(event.find(L"restart failed") != std::wstring::npos,
+              "terminal recorder failure must report restart failure");
+    }
+
     std::filesystem::remove_all(root, ec);
-
     std::cout << "Recorder controller tests passed\n";
 }

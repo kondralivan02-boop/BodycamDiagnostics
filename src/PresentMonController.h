@@ -11,6 +11,7 @@ public:
     bool available() const;
     bool start(DWORD targetPid, const std::filesystem::path& csvOutput, std::wstring* error = nullptr);
     void stop();
+    bool healthy(std::wstring* event = nullptr);
     bool running() const noexcept { return process_ != nullptr; }
 
 private:
