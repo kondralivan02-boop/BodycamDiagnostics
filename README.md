@@ -5,7 +5,7 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 ## Current capabilities
 - Native C++20 / Win32 UI, no Java/JVM.
 - Automatic `Bodycam-Win64-Shipping.exe` detection.
-- F9 start / F10 stop global hotkeys.
+- F9 global hotkey toggles test start / stop.
 - Per-test crash-friendly session folders and logs.
 - PresentMon capture scoped to the Bodycam PID.
 - FFmpeg Desktop Duplication recording with NVIDIA NVENC, split into 15-second MKV chunks.
@@ -52,4 +52,4 @@ Requirements: CMake 3.24+, MSVC x64 Build Tools, and a Windows SDK.
 ./build_windows.ps1
 ```
 
-GitHub Actions builds `Release` x64 and uploads `BodycamDiagnostics.exe` as an artifact.
+GitHub Actions builds `Release` x64, runs regression tests, uploads the runtime package as an artifact, and publishes separate GitHub Release assets on verified `stable` pushes.
