@@ -1,4 +1,5 @@
 #include "SystemSnapshot.h"
+#include "AtomicOutputFile.h"
 #include <Windows.h>
 #include <filesystem>
 #include <fstream>
@@ -241,8 +242,12 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
     const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
 
-    std::wofstream out(outputFile, std::ios::out | std::ios::trunc);
-    if (!out) return false;
+    AtomicWideOutputFile atomicOut(
+        outputFile,
+        std::ios::out | std::ios::trunc);
+    auto& out = atomicOut.stream();
+    if (!atomicOut.isOpen())
+        return false;
 
     out << L"{\n";
     out << L"  \"windows\": \"" << jsonEscape(product) << L"\",\n";
@@ -284,5 +289,7 @@ bool writeSystemSnapshot(const std::filesystem::path& outputFile) {
     out << L"    \"note\": \"Bodycam logs are optional. Restricted access does not invalidate the capture.\"\n";
     out << L"  }\n";
     out << L"}\n";
-    return true;
+    if (!out)
+        return false;
+    return atomicOut.commit();
 }

@@ -6,23 +6,25 @@
 #include <fstream>
 #include <string>
 
-class AtomicOutputFile {
+template <typename Stream>
+class BasicAtomicOutputFile {
 public:
-    explicit AtomicOutputFile(const std::filesystem::path& output)
+    explicit BasicAtomicOutputFile(
+        const std::filesystem::path& output,
+        std::ios::openmode mode =
+            std::ios::binary | std::ios::trunc)
         : output_(output),
           temporary_(output.wstring() + L".tmp") {
 
         std::error_code ec;
         std::filesystem::remove(temporary_, ec);
-        stream_.open(
-            temporary_,
-            std::ios::binary | std::ios::trunc);
+        stream_.open(temporary_, mode);
     }
 
-    AtomicOutputFile(const AtomicOutputFile&) = delete;
-    AtomicOutputFile& operator=(const AtomicOutputFile&) = delete;
+    BasicAtomicOutputFile(const BasicAtomicOutputFile&) = delete;
+    BasicAtomicOutputFile& operator=(const BasicAtomicOutputFile&) = delete;
 
-    ~AtomicOutputFile() {
+    ~BasicAtomicOutputFile() {
         if (stream_.is_open())
             stream_.close();
 
@@ -36,7 +38,7 @@ public:
         return stream_.is_open();
     }
 
-    std::ofstream& stream() noexcept {
+    Stream& stream() noexcept {
         return stream_;
     }
 
@@ -73,6 +75,11 @@ public:
 private:
     std::filesystem::path output_;
     std::filesystem::path temporary_;
-    std::ofstream stream_;
+    Stream stream_;
     bool committed_ = false;
 };
+
+using AtomicOutputFile =
+    BasicAtomicOutputFile<std::ofstream>;
+using AtomicWideOutputFile =
+    BasicAtomicOutputFile<std::wofstream>;

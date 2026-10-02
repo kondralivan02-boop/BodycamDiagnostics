@@ -1,4 +1,5 @@
 #include "EnvironmentDiagnostics.h"
+#include "AtomicOutputFile.h"
 #include <Windows.h>
 #include <winevt.h>
 #include <algorithm>
@@ -144,10 +145,16 @@ EnvironmentCapabilities probeEnvironmentCapabilities(std::uint32_t gamePid) {
     return profile;
 }
 bool saveEnvironmentCapabilities(const EnvironmentCapabilities& profile, const std::filesystem::path& output) {
-    std::ofstream file(output, std::ios::binary);
+    AtomicOutputFile outputFile(output);
+    auto& file = outputFile.stream();
+    if (!outputFile.isOpen())
+        return false;
+
     writeCapabilitiesJson(file, profile);
-    file.flush();
-    return static_cast<bool>(file);
+    if (!file)
+        return false;
+
+    return outputFile.commit();
 }
 EventLogCollection collectWindowsEvents(std::chrono::system_clock::time_point start,
                                        std::chrono::system_clock::time_point end) {
@@ -170,7 +177,10 @@ bool writeWindowsEventReport(const EventLogCollection& result, const StutterCorr
                              std::chrono::system_clock::time_point sessionStart,
                              std::chrono::system_clock::time_point sessionEnd,
                              bool clockStable, bool gameExited, const std::filesystem::path& output) {
-    std::ofstream out(output, std::ios::binary);
+    AtomicOutputFile outputFile(output);
+    auto& out = outputFile.stream();
+    if (!outputFile.isOpen())
+        return false;
     out.imbue(std::locale::classic());
     out << std::fixed << std::setprecision(3);
     out << "{\n\"schema_version\":1,\n\"optional\":true,\n\"session_start_utc_unix_ms\":" << unixMs(sessionStart)
@@ -204,6 +214,7 @@ bool writeWindowsEventReport(const EventLogCollection& result, const StutterCorr
         out << "],\"xml\":" << jsonQuoted(event.xml) << '}';
     }
     out << "\n]}\n";
-    out.flush();
-    return static_cast<bool>(out);
+    if (!out)
+        return false;
+    return outputFile.commit();
 }

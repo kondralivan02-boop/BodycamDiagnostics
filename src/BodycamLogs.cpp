@@ -1,4 +1,5 @@
 #include "BodycamLogs.h"
+#include "AtomicOutputFile.h"
 #include <algorithm>
 #include <cerrno>
 #ifdef _WIN32
@@ -127,10 +128,17 @@ BodycamLogCollection collectBodycamLogs(const std::filesystem::path& sourceDirec
         std::filesystem::create_directories(sessionDirectory / "bodycam_logs", ec);
         if (ec) { result.source.status = "write_error"; result.source.errorCode = static_cast<std::uint32_t>(ec.value()); break; }
         const auto destination = sessionDirectory / "bodycam_logs" / source.filename();
-        std::ofstream output(destination, std::ios::binary | std::ios::trunc);
+        AtomicOutputFile outputFile(destination);
+        auto& output = outputFile.stream();
+        if (!outputFile.isOpen()) {
+            result.source.status = "write_error";
+            break;
+        }
         output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        output.flush();
-        if (!output) { result.source.status = "write_error"; break; }
+        if (!output || !outputFile.commit()) {
+            result.source.status = "write_error";
+            break;
+        }
         const bool truncated = static_cast<std::uintmax_t>(read) != size;
         result.files.push_back({utf8Path(source.filename()), size, static_cast<std::uintmax_t>(read), truncated});
         result.bytesCopied += static_cast<std::uintmax_t>(read);
@@ -140,7 +148,10 @@ BodycamLogCollection collectBodycamLogs(const std::filesystem::path& sourceDirec
     return result;
 }
 bool writeBodycamLogsManifest(const BodycamLogCollection& result, const std::filesystem::path& output) {
-    std::ofstream out(output, std::ios::binary);
+    AtomicOutputFile outputFile(output);
+    auto& out = outputFile.stream();
+    if (!outputFile.isOpen())
+        return false;
     out << "{\"schema_version\":1,\"note\":\"Recent raw logs from known Bodycam/Saved/Logs path only. Last-write time selects files; entries may predate the session. Truncated files retain the tail and may begin mid-line or mid-character. No line-level time correlation.\",\"capabilities\":";
     writeCapabilitiesJson(out, EnvironmentCapabilities{{result.source}});
     out << ",\"bytes_copied\":" << result.bytesCopied << ",\"files\":[";
@@ -152,6 +163,7 @@ bool writeBodycamLogsManifest(const BodycamLogCollection& result, const std::fil
             << ",\"copied_bytes\":" << file.copiedBytes << ",\"tail_only\":" << (file.tailOnly ? "true" : "false") << '}';
     }
     out << "]}\n";
-    out.flush();
-    return static_cast<bool>(out);
+    if (!out)
+        return false;
+    return outputFile.commit();
 }
