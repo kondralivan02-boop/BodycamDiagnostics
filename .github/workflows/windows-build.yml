@@ -49,6 +49,7 @@ jobs:
           Copy-Item EnableFullscreenOverlay.ps1 dist/EnableFullscreenOverlay.ps1
           Copy-Item EnableFullscreenOverlay.cmd dist/EnableFullscreenOverlay.cmd
           Copy-Item settings.example.ini dist/settings.example.ini
+          Copy-Item runtime-tools.sha256 dist/runtime-tools.sha256
           @"
           Preferred: put these files in this Tools folder before running a test:
 
@@ -57,7 +58,8 @@ jobs:
 
           Restricted/Gizmo fallback: the same files may be placed directly beside BodycamDiagnostics.exe.
           Bodycam Diagnostics prefers Tools\ when both locations exist.
-          Bodycam Diagnostics checks both tools before starting capture.
+          Keep runtime-tools.sha256 beside BodycamDiagnostics.exe.
+          Bodycam Diagnostics verifies both tools against that manifest before execution.
           ffmpeg.exe must provide h264_nvenc and ddagrab.
           "@ | Set-Content -Encoding UTF8 dist/Tools/README.txt
 
@@ -69,7 +71,8 @@ jobs:
             'dist/BodycamFullscreenOverlay.exe',
             'dist/EnableFullscreenOverlay.ps1',
             'dist/EnableFullscreenOverlay.cmd',
-            'dist/settings.example.ini'
+            'dist/settings.example.ini',
+            'dist/runtime-tools.sha256'
           )
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
@@ -98,7 +101,8 @@ jobs:
             dist/EnableFullscreenOverlay.ps1 `
             dist/EnableFullscreenOverlay.cmd `
             dist/settings.example.ini `
+            dist/runtime-tools.sha256 `
             dist/checksums.sha256 `
             --target $env:GITHUB_SHA `
             --title "BodycamDiagnostics stable $shortSha" `
-            --notes "Stable Windows x64 build. Runtime dependencies PresentMon.exe and ffmpeg.exe remain external and are verified separately by SHA-256."
+            --notes "Stable Windows x64 build. PresentMon.exe and ffmpeg.exe remain external. Their accepted SHA-256 values are defined by runtime-tools.sha256 shipped with this release."

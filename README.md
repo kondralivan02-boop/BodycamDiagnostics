@@ -9,7 +9,7 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - Per-test crash-friendly session folders and logs.
 - PresentMon capture scoped to the Bodycam PID.
 - FFmpeg Desktop Duplication recording with NVIDIA NVENC, split into 15-second MKV chunks.
-- Preflight checks for PresentMon, FFmpeg, `h264_nvenc`, and `ddagrab`.
+- Preflight checks for PresentMon, FFmpeg, trusted SHA-256 values from `runtime-tools.sha256`, `h264_nvenc`, and `ddagrab`.
 - CPU/RAM and NVIDIA GPU/VRAM/temperature/clock telemetry to `telemetry.csv`.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - `summary.json` and `summary.txt` written at the end of each test.
@@ -22,13 +22,14 @@ Preferred layout:
 
 ```text
 BodycamDiagnostics.exe
+runtime-tools.sha256
 Tools/
   PresentMon.exe
   ffmpeg.exe
 Sessions/
 ```
 
-For restricted/Gizmo environments, both tools may instead be placed directly beside `BodycamDiagnostics.exe`. The application prefers `Tools\` when both locations exist.
+For restricted/Gizmo environments, both tools may instead be placed directly beside `BodycamDiagnostics.exe`. The application prefers `Tools\` when both locations exist. Keep `runtime-tools.sha256` beside the main EXE; runtime tools are not executed unless their hashes match the manifest.
 
 Each test creates its own folder inside `Sessions/`.
 

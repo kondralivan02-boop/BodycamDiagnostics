@@ -46,7 +46,7 @@ int main() {
 
     const auto fakeFfmpeg = root / "ffmpeg.exe";
     std::ofstream(fakeFfmpeg) << "not-the-verified-ffmpeg";
-    const auto preflight = runToolPreflight(preferred, fakeFfmpeg);
+    const auto preflight = runToolPreflight(preferred, fakeFfmpeg, manifest);
     check(preflight.ffmpegFound, "test ffmpeg fixture should be found");
     check(!preflight.ffmpegTrusted, "unknown ffmpeg hash must not be trusted");
     check(!preflight.recordingReady(), "untrusted ffmpeg must block recording readiness");
