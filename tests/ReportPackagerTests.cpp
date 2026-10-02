@@ -2,7 +2,9 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <iterator>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
