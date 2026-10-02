@@ -57,6 +57,8 @@ jobs:
           Copy-Item runtime-tools.sources.json dist/runtime-tools.sources.json
           Copy-Item InstallRuntimeTools.ps1 dist/InstallRuntimeTools.ps1
           Copy-Item InstallRuntimeTools.cmd dist/InstallRuntimeTools.cmd
+          Copy-Item ValidateEnvironment.ps1 dist/ValidateEnvironment.ps1
+          Copy-Item ValidateEnvironment.cmd dist/ValidateEnvironment.cmd
           @"
           Preferred: put these files in this Tools folder before running a test:
 
@@ -84,7 +86,9 @@ jobs:
             'dist/runtime-tools.sha256',
             'dist/runtime-tools.sources.json',
             'dist/InstallRuntimeTools.ps1',
-            'dist/InstallRuntimeTools.cmd'
+            'dist/InstallRuntimeTools.cmd',
+            'dist/ValidateEnvironment.ps1',
+            'dist/ValidateEnvironment.cmd'
           )
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
@@ -117,6 +121,8 @@ jobs:
             dist/runtime-tools.sources.json `
             dist/InstallRuntimeTools.ps1 `
             dist/InstallRuntimeTools.cmd `
+            dist/ValidateEnvironment.ps1 `
+            dist/ValidateEnvironment.cmd `
             dist/checksums.sha256 `
             --target $env:GITHUB_SHA `
             --title "BodycamDiagnostics stable $shortSha" `

@@ -26,6 +26,8 @@ runtime-tools.sha256
 runtime-tools.sources.json
 InstallRuntimeTools.ps1
 InstallRuntimeTools.cmd
+ValidateEnvironment.ps1
+ValidateEnvironment.cmd
 Tools/
   PresentMon.exe
   ffmpeg.exe
@@ -38,6 +40,9 @@ For restricted/Gizmo environments, both tools may instead be placed directly bes
 Run `InstallRuntimeTools.cmd` beside the main EXE to fetch the pinned PresentMon and FFmpeg release assets into `Tools\`. The installer verifies the download SHA-256 values, verifies the extracted executables against `runtime-tools.sha256`, and only then copies them into the runtime folder. The binaries remain external dependencies and are not stored in this repository or attached to BodycamDiagnostics releases.
 
 Each test creates its own folder inside `Sessions/`.
+
+## Environment self-test
+Run `ValidateEnvironment.cmd` before the first Bodycam capture on a new PC. It verifies the runtime manifest, PresentMon and FFmpeg hashes, `PresentMon --help`, `h264_nvenc`, `ddagrab`, and a short real NVENC encode. Results are written to `SelfTest/environment_selftest.json` and `.txt`.
 
 ## Optional persistent mirror
 Create `settings.ini` beside the EXE:
