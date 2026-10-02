@@ -13,7 +13,7 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - CPU/RAM and NVIDIA GPU/VRAM/temperature/clock telemetry to `telemetry.csv`.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - `summary.json` and `summary.txt` written at the end of each test.
-- Automatic `report_bundle.zip` containing logs, CSV telemetry/frametimes, system snapshot and summaries; video stays outside the ZIP. `video_capture.log` is preserved after mux and included in the report.
+- Automatic native C++ `report_bundle.zip` containing logs, CSV telemetry/frametimes, system snapshot and summaries; no `tar.exe` or external archiver is required. Video stays outside the ZIP. `video_capture.log` is preserved after mux and included in the report.
 - UI buttons to open the latest session folder and copy the report ZIP path.
 - Optional crash-survival mirror to another disk, network share or synced folder. Lightweight diagnostics are mirrored every few seconds, and completed 15-second MKV chunks are copied after they stop growing.
 
