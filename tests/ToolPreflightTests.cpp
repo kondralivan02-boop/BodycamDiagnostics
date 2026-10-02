@@ -12,7 +12,12 @@ void check(bool ok, const char* message) {
 }
 }
 
-int main() {
+int wmain(int argc, wchar_t** argv) {
+    check(argc == 2, "expected trusted runtime manifest path");
+    const std::filesystem::path trustedManifest = argv[1];
+    check(std::filesystem::is_regular_file(trustedManifest),
+          "trusted runtime manifest must exist");
+
     const auto root = std::filesystem::temp_directory_path() / "BodycamDiagnostics-tool-resolution-test";
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
@@ -46,7 +51,18 @@ int main() {
 
     const auto fakeFfmpeg = root / "ffmpeg.exe";
     std::ofstream(fakeFfmpeg) << "not-the-verified-ffmpeg";
+    const auto trustedManifestPreflight =
+        runToolPreflight(preferred, fakeFfmpeg, trustedManifest);
+    check(trustedManifestPreflight.hashManifestFound,
+          "repository runtime manifest should be found");
+    check(trustedManifestPreflight.hashManifestTrusted,
+          "repository runtime manifest must match the build trust anchor");
+
     const auto preflight = runToolPreflight(preferred, fakeFfmpeg, manifest);
+    check(preflight.hashManifestFound,
+          "tampered manifest fixture should still be found");
+    check(!preflight.hashManifestTrusted,
+          "tampered runtime manifest must not be trusted");
     check(preflight.ffmpegFound, "test ffmpeg fixture should be found");
     check(!preflight.ffmpegTrusted, "unknown ffmpeg hash must not be trusted");
     check(!preflight.recordingReady(), "untrusted ffmpeg must block recording readiness");

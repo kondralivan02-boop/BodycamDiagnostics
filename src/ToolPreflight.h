@@ -6,6 +6,7 @@ struct ToolPreflightResult {
     bool presentMonFound = false;
     bool ffmpegFound = false;
     bool hashManifestFound = false;
+    bool hashManifestTrusted = false;
     bool presentMonTrusted = false;
     bool ffmpegTrusted = false;
     bool nvencAvailable = false;
