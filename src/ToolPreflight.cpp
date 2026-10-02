@@ -203,7 +203,7 @@ ToolPreflightResult runToolPreflight(
     d += L"\nFFmpeg: ";
     d += r.ffmpegFound ? (r.ffmpegTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
 
-    if (r.ffmpegFound) {
+    if (r.ffmpegFound && r.ffmpegTrusted) {
         std::string encoders;
         if (runAndCapture(ffmpegExe, L"-hide_banner -encoders", encoders))
             r.nvencAvailable = containsAscii(encoders, "h264_nvenc");
