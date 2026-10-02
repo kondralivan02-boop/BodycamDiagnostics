@@ -118,11 +118,30 @@ bool PresentMonController::start(DWORD targetPid,
         return false;
     }
 
-    launch(
-        L"--terminate_existing_session --session_name " +
-            std::wstring(kSessionName),
-        nullptr,
-        nullptr);
+    HANDLE staleSessionStopper = nullptr;
+    if (launch(
+            L"--terminate_existing_session --session_name " +
+                std::wstring(kSessionName),
+            &staleSessionStopper,
+            error)) {
+
+        const DWORD stopWait =
+            WaitForSingleObject(staleSessionStopper, 2500);
+
+        if (stopWait != WAIT_OBJECT_0) {
+            TerminateProcess(staleSessionStopper, 4);
+            WaitForSingleObject(staleSessionStopper, 500);
+            CloseHandle(staleSessionStopper);
+
+            if (error)
+                *error = L"Timed out while terminating previous PresentMon session";
+            return false;
+        }
+
+        CloseHandle(staleSessionStopper);
+    } else {
+        return false;
+    }
 
     SECURITY_ATTRIBUTES sa{};
     sa.nLength = sizeof(sa);
@@ -155,7 +174,43 @@ bool PresentMonController::start(DWORD targetPid,
         launch(args, &process_, error, csvHandle);
 
     CloseHandle(csvHandle);
-    return started;
+
+    if (!started)
+        return false;
+
+    const DWORD startupWait =
+        WaitForSingleObject(process_, 500);
+
+    if (startupWait == WAIT_OBJECT_0) {
+        DWORD exitCode = 0;
+        GetExitCodeProcess(process_, &exitCode);
+        CloseHandle(process_);
+        process_ = nullptr;
+
+        if (error) {
+            *error =
+                L"PresentMon exited during startup with code " +
+                std::to_wstring(exitCode);
+        }
+        return false;
+    }
+
+    if (startupWait == WAIT_FAILED) {
+        const DWORD waitError = GetLastError();
+        TerminateProcess(process_, 5);
+        WaitForSingleObject(process_, 500);
+        CloseHandle(process_);
+        process_ = nullptr;
+
+        if (error) {
+            *error =
+                L"PresentMon startup liveness check failed: " +
+                std::to_wstring(waitError);
+        }
+        return false;
+    }
+
+    return true;
 }
 
 void PresentMonController::stop() {
