@@ -1,5 +1,7 @@
 #include "ReportPackager.h"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -400,14 +402,15 @@ bool writeNativeZip(
     }
     out.close();
 
-    ec.clear();
-    std::filesystem::remove(outputZip, ec);
-    ec.clear();
-    std::filesystem::rename(temporary, outputZip, ec);
-    if (ec) {
+    if (!MoveFileExW(
+            temporary.c_str(),
+            outputZip.c_str(),
+            MOVEFILE_REPLACE_EXISTING |
+                MOVEFILE_WRITE_THROUGH)) {
+        const DWORD moveError = GetLastError();
         if (error)
             *error = L"Cannot publish report ZIP: " +
-                     std::to_wstring(ec.value());
+                     std::to_wstring(moveError);
         std::filesystem::remove(temporary, ec);
         return false;
     }
