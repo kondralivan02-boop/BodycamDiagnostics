@@ -23,6 +23,9 @@ Preferred layout:
 ```text
 BodycamDiagnostics.exe
 runtime-tools.sha256
+runtime-tools.sources.json
+InstallRuntimeTools.ps1
+InstallRuntimeTools.cmd
 Tools/
   PresentMon.exe
   ffmpeg.exe
@@ -30,6 +33,9 @@ Sessions/
 ```
 
 For restricted/Gizmo environments, both tools may instead be placed directly beside `BodycamDiagnostics.exe`. The application prefers `Tools\` when both locations exist. Keep `runtime-tools.sha256` beside the main EXE; runtime tools are not executed unless their hashes match the manifest.
+
+## Runtime tool installer
+Run `InstallRuntimeTools.cmd` beside the main EXE to fetch the pinned PresentMon and FFmpeg release assets into `Tools\`. The installer verifies the download SHA-256 values, verifies the extracted executables against `runtime-tools.sha256`, and only then copies them into the runtime folder. The binaries remain external dependencies and are not stored in this repository or attached to BodycamDiagnostics releases.
 
 Each test creates its own folder inside `Sessions/`.
 

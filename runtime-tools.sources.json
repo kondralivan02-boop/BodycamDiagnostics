@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "presentMon": {
+    "version": "2.6.0",
+    "url": "https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe",
+    "downloadSha256": "b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af",
+    "archiveType": "none",
+    "outputName": "PresentMon.exe"
+  },
+  "ffmpeg": {
+    "version": "9.0.2-essentials_build",
+    "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+    "downloadSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+    "archiveType": "zip",
+    "outputName": "ffmpeg.exe"
+  }
+}

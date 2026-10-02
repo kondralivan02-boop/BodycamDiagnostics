@@ -52,6 +52,9 @@ jobs:
           Copy-Item EnableFullscreenOverlay.cmd dist/EnableFullscreenOverlay.cmd
           Copy-Item settings.example.ini dist/settings.example.ini
           Copy-Item runtime-tools.sha256 dist/runtime-tools.sha256
+          Copy-Item runtime-tools.sources.json dist/runtime-tools.sources.json
+          Copy-Item InstallRuntimeTools.ps1 dist/InstallRuntimeTools.ps1
+          Copy-Item InstallRuntimeTools.cmd dist/InstallRuntimeTools.cmd
           @"
           Preferred: put these files in this Tools folder before running a test:
 
@@ -60,8 +63,10 @@ jobs:
 
           Restricted/Gizmo fallback: the same files may be placed directly beside BodycamDiagnostics.exe.
           Bodycam Diagnostics prefers Tools\ when both locations exist.
-          Keep runtime-tools.sha256 beside BodycamDiagnostics.exe.
-          Bodycam Diagnostics verifies both tools against that manifest before execution.
+          Fast path: run InstallRuntimeTools.cmd beside BodycamDiagnostics.exe.
+          It downloads pinned release assets and verifies SHA-256 before installing them.
+          Keep runtime-tools.sha256 and runtime-tools.sources.json beside BodycamDiagnostics.exe.
+          Bodycam Diagnostics verifies both tools against the hash manifest before execution.
           ffmpeg.exe must provide h264_nvenc and ddagrab.
           "@ | Set-Content -Encoding UTF8 dist/Tools/README.txt
 
@@ -74,7 +79,10 @@ jobs:
             'dist/EnableFullscreenOverlay.ps1',
             'dist/EnableFullscreenOverlay.cmd',
             'dist/settings.example.ini',
-            'dist/runtime-tools.sha256'
+            'dist/runtime-tools.sha256',
+            'dist/runtime-tools.sources.json',
+            'dist/InstallRuntimeTools.ps1',
+            'dist/InstallRuntimeTools.cmd'
           )
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLowerInvariant()
@@ -104,7 +112,10 @@ jobs:
             dist/EnableFullscreenOverlay.cmd `
             dist/settings.example.ini `
             dist/runtime-tools.sha256 `
+            dist/runtime-tools.sources.json `
+            dist/InstallRuntimeTools.ps1 `
+            dist/InstallRuntimeTools.cmd `
             dist/checksums.sha256 `
             --target $env:GITHUB_SHA `
             --title "BodycamDiagnostics stable $shortSha" `
-            --notes "Stable Windows x64 build. PresentMon.exe and ffmpeg.exe remain external. Their accepted SHA-256 values are defined by runtime-tools.sha256 shipped with this release."
+            --notes "Stable Windows x64 build. PresentMon.exe and ffmpeg.exe remain external. Run InstallRuntimeTools.cmd to download pinned verified releases, or provide matching binaries manually. Accepted SHA-256 values are defined by runtime-tools.sha256."
