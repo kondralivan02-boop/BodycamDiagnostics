@@ -217,12 +217,13 @@ bool SessionMirror::syncOnce(bool finalPass) {
         return true;
     }
 
-    for (std::filesystem::directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
+    for (std::filesystem::recursive_directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
         const auto& entry = *it;
         if (!entry.is_regular_file(ec)) continue;
         if (entry.path().extension() != L".mkv") continue;
 
-        const auto relative = std::filesystem::path(L"video") / entry.path().filename();
+        const auto relative = std::filesystem::relative(entry.path(), sourceSession_, ec);
+        if (ec) { recordFailure(ec.value()); return false; }
         const auto size = entry.file_size(ec);
         if (ec || size == 0) {
             ec.clear();

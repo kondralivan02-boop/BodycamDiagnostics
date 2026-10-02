@@ -488,6 +488,23 @@ bool packageSessionReport(
         return false;
     }
 
+    const auto rawVideoDirectory = sessionDirectory / L"video";
+    ec.clear();
+    if (std::filesystem::is_directory(rawVideoDirectory, ec)) {
+        for (std::filesystem::recursive_directory_iterator it(rawVideoDirectory, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            if (it->path().filename() == L"video_capture.log" &&
+                !appendRegularFile(sessionDirectory, it->path(), entries)) {
+                if (error) *error = L"Cannot include raw video capture log";
+                return false;
+            }
+        }
+        if (ec) {
+            if (error) *error = L"Cannot enumerate raw video capture logs";
+            return false;
+        }
+    }
+
     if (!appendDirectory(
             sessionDirectory,
             sessionDirectory / L"crash_diagnostics",

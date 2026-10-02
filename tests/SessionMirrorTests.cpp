@@ -38,6 +38,11 @@ int main() {
             << "muxed video with audio";
         std::ofstream(source / L"video_without_audio.mkv", std::ios::binary)
             << "finalized video without audio";
+        std::filesystem::create_directories(source / L"video" / L"part_1");
+        std::ofstream(source / L"video" / L"part_1" / L"video_00000.mkv", std::ios::binary)
+            << "raw recording evidence";
+        std::ofstream(source / L"video_part_1_video_without_audio.mkv", std::ios::binary)
+            << "separate recording part";
 
         SessionMirror mirror(source, mirrorRoot);
         std::wstring startError;
@@ -56,6 +61,12 @@ int main() {
         check(std::filesystem::is_regular_file(
                   target / L"video_without_audio.mkv"),
               "final video without audio must be mirrored");
+        check(std::filesystem::is_regular_file(
+                  target / L"video_part_1_video_without_audio.mkv"),
+              "separate recording part must be mirrored");
+        check(std::filesystem::is_regular_file(
+                  target / L"video" / L"part_1" / L"video_00000.mkv"),
+              "nested raw recording must survive through the mirror");
 
         {
             std::ofstream(

@@ -137,11 +137,12 @@ bool finalizeVideo(
     const auto output = sessionDirectory /
         (partNumber ? L"video_" + partLabel + L"_" + outputName : std::wstring(outputName));
 
-    const auto alternateOutput = sessionDirectory /
+    const auto alternateName =
         (partNumber ? L"video_" + partLabel + L"_" : std::wstring{}) +
         (audioAvailable
             ? L"video_without_audio.mkv"
             : L"video_with_audio.mkv");
+    const auto alternateOutput = sessionDirectory / alternateName;
 
     ec.clear();
     std::filesystem::remove(output, ec);
