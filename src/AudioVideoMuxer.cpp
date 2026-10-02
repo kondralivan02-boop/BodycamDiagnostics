@@ -67,9 +67,11 @@ bool runProcess(const std::filesystem::path& exe,
 }
 }
 
-bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
-                              const std::filesystem::path& sessionDirectory,
-                              std::wstring* error) {
+bool finalizeSessionVideo(
+    const std::filesystem::path& ffmpegExe,
+    const std::filesystem::path& sessionDirectory,
+    bool includeAudio,
+    std::wstring* error) {
     std::error_code ec;
 
     if (!std::filesystem::is_regular_file(ffmpegExe, ec)) {
