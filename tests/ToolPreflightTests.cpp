@@ -28,6 +28,10 @@ int main() {
     check(resolveRuntimeTool(root, L"PresentMon.exe") == fallback,
           "root-level tool should be accepted when Tools copy is absent");
 
+    check(fileSha256Hex(fallback) ==
+              "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
+          "SHA-256 must be computed exactly for runtime tools");
+
     std::ofstream(preferred) << "fixture";
     check(resolveRuntimeTool(root, L"PresentMon.exe") == preferred,
           "Tools path must take priority when both copies exist");
