@@ -59,6 +59,7 @@ Do not enable the NVIDIA recording overlay for this validation. Bodycam Diagnost
 
 A usable run should contain, when the corresponding source was available:
 
+- `build_info.json`
 - `session.log`
 - `system.json`
 - `environment_capabilities.json`
@@ -72,6 +73,7 @@ A usable run should contain, when the corresponding source was available:
 - `windows_events.json`
 - `video_capture.log`
 - `video_with_audio.mkv` when video and WASAPI audio were both successfully captured
+- `video_without_audio.mkv` when video capture succeeded but optional WASAPI audio was unavailable
 - `report_bundle.zip`
 
 If muxing fails, raw video chunks and audio are intentionally retained instead of being deleted.
@@ -79,6 +81,8 @@ If muxing fails, raw video chunks and audio are intentionally retained instead o
 ## 5. Acceptance checks
 
 Before performance comparisons are trusted:
+
+- `build_info.json` must identify the exact commit SHA used for the capture
 
 - capture validation must not report a required-source failure
 - PresentMon must remain alive after startup
