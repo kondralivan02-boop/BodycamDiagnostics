@@ -39,6 +39,8 @@ jobs:
             if (-not $validation.valid -or $validation.warnings.Count -eq 0) { throw 'Optional-source validation policy failed' }
             Remove-Item -Recurse -Force $dir.FullName
           }
+          & ./tests/RuntimeToolSourceTests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare runtime package
         shell: pwsh
