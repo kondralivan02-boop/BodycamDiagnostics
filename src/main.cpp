@@ -15,6 +15,7 @@
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
 #include "CrashCollector.h"
+#include "CaptureStartupPolicy.h"
 #include "BodycamLogs.h"
 #include "EnvironmentDiagnostics.h"
 #include "DiagnosticsOverlay.h"
@@ -219,6 +220,71 @@ void refreshGameState() {
     }
 }
 
+void abortSessionStartup(const std::wstring& reason) {
+    logEvent(L"Startup aborted  •  " + reason);
+
+    if (gRecorder) {
+        gRecorder->stop();
+        gRecorder.reset();
+    }
+
+    if (gAudio) {
+        gAudio->stop();
+        gAudio.reset();
+    }
+
+    if (gPresentMon) {
+        gPresentMon->stop();
+        gPresentMon.reset();
+    }
+
+    if (gTelemetry) {
+        gTelemetry->stop();
+        gTelemetry.reset();
+    }
+
+    std::filesystem::path failedSessionPath;
+    if (gSession) {
+        failedSessionPath = gSession->sessionPath();
+        gSession->stop();
+    }
+
+    if (gMirror) {
+        gMirror->stop();
+        gMirror.reset();
+    }
+
+    gLastSessionPath = failedSessionPath;
+    gLastReportPath.clear();
+    gSession.reset();
+
+    gGamePid = 0;
+    gRunning = false;
+    gRecorderStartObserved = false;
+    gRecorderTimelineContinuous = false;
+
+    updateControlsForRunningState();
+    setStatusVisual(
+        L"Тест не запущен  •  обязательный источник недоступен");
+
+    std::wstring message =
+        L"Тест не запущен, потому что обязательный источник "
+        L"диагностики не стартовал:\n\n" +
+        reason;
+
+    if (!failedSessionPath.empty()) {
+        message +=
+            L"\n\nДиагностический лог запуска сохранён:\n" +
+            failedSessionPath.wstring();
+    }
+
+    MessageBoxW(
+        gMain,
+        message.c_str(),
+        L"Bodycam Diagnostics — Startup",
+        MB_ICONERROR);
+}
+
 void startSession() {
     if (gRunning) return;
 
@@ -324,10 +390,13 @@ void startSession() {
 
     gPresentMonStartedWallClock = std::chrono::system_clock::now();
     std::wstring pmError;
-    if (gPresentMon->start(
+    const bool presentMonStarted =
+        gPresentMon->start(
             bodycam.pid,
             gSession->sessionPath() / L"presentmon.csv",
-            &pmError)) {
+            &pmError);
+
+    if (presentMonStarted) {
         gEnvironmentCapabilities.sources.push_back({"presentmon", "started", 0, false, "Startup succeeded; completeness validated separately"});
         logEvent(L"PresentMon  •  ON");
         gLiveFrames.reset(gSession->sessionPath() / L"presentmon.csv");
@@ -340,9 +409,12 @@ void startSession() {
         ffmpegExe);
 
     std::wstring recorderError;
-    if (gRecorder->start(
+    const bool recorderStarted =
+        gRecorder->start(
             gSession->sessionPath() / L"video",
-            &recorderError)) {
+            &recorderError);
+
+    if (recorderStarted) {
         gRecorderStartedWallClock = std::chrono::system_clock::now();
         gRecorderStartObserved = true;
         gRecorderTimelineContinuous = true;
@@ -351,6 +423,41 @@ void startSession() {
     } else {
         gEnvironmentCapabilities.sources.push_back({"nvenc_video", "unavailable", 0, false, "See session.log for startup error; no Win32 code supplied by controller"});
         logEvent(L"NVENC video недоступно  •  " + recorderError);
+    }
+
+    if (!requiredCaptureSourcesReady(
+            presentMonStarted,
+            recorderStarted)) {
+
+        if (!saveEnvironmentCapabilities(
+                gEnvironmentCapabilities,
+                gSession->sessionPath() /
+                    L"environment_capabilities.json")) {
+            logEvent(
+                L"Cannot save environment capabilities profile");
+        }
+
+        std::wstring failure;
+        if (!presentMonStarted) {
+            failure += L"PresentMon: ";
+            failure +=
+                pmError.empty()
+                    ? L"startup failed"
+                    : pmError;
+        }
+
+        if (!recorderStarted) {
+            if (!failure.empty())
+                failure += L"\n";
+            failure += L"NVENC video: ";
+            failure +=
+                recorderError.empty()
+                    ? L"startup failed"
+                    : recorderError;
+        }
+
+        abortSessionStartup(failure);
+        return;
     }
 
     gAudio = std::make_unique<AudioLoopbackRecorder>();
