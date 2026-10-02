@@ -41,6 +41,8 @@ jobs:
           }
           & ./tests/RuntimeToolSourceTests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./tests/EnvironmentSelfTestTests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare runtime package
         shell: pwsh
