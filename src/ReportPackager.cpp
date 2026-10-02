@@ -70,7 +70,7 @@ bool runCommand(const std::wstring& command,
 bool packageSessionReport(const std::filesystem::path& sessionDirectory,
                           const std::filesystem::path& outputZip,
                           std::wstring* error) {
-    static constexpr std::array<const wchar_t*, 18> kReportFiles = {
+    static constexpr std::array<const wchar_t*, 19> kReportFiles = {
         L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
         L"windows_events.json",
@@ -79,6 +79,7 @@ bool packageSessionReport(const std::filesystem::path& sessionDirectory,
         L"system.json",
         L"presentmon.csv",
         L"telemetry.csv",
+        L"video_capture.log",
         L"summary.json",
         L"summary.txt",
         L"validation.json",
