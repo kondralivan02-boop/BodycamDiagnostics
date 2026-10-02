@@ -1,4 +1,5 @@
 #include "TestValidator.h"
+#include "ToolPreflight.h"
 
 #include <Windows.h>
 
@@ -169,7 +170,33 @@ std::filesystem::path defaultFfmpegPath(
 
     const auto sessionsDir = sessionPath.parent_path();
     const auto appDir = sessionsDir.parent_path();
-    return appDir / L"Tools" / L"ffmpeg.exe";
+    return resolveRuntimeTool(
+        appDir,
+        L"ffmpeg.exe");
+}
+
+std::filesystem::path finalVideoPath(
+    const std::filesystem::path& sessionPath,
+    bool& videoHasAudio) {
+
+    const auto withAudio =
+        sessionPath / L"video_with_audio.mkv";
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(withAudio, ec)) {
+        videoHasAudio = true;
+        return withAudio;
+    }
+
+    ec.clear();
+    const auto withoutAudio =
+        sessionPath / L"video_without_audio.mkv";
+    if (std::filesystem::is_regular_file(withoutAudio, ec)) {
+        videoHasAudio = false;
+        return withoutAudio;
+    }
+
+    videoHasAudio = false;
+    return {};
 }
 }
 
@@ -202,32 +229,45 @@ TestValidationResult validateTestSession(
     }
 
     std::error_code ec;
-    const auto video = sessionPath / L"video_with_audio.mkv";
-    if (!std::filesystem::is_regular_file(video, ec) ||
+    bool videoHasAudio = false;
+    const auto video =
+        finalVideoPath(sessionPath, videoHasAudio);
+
+    ec.clear();
+    if (video.empty() ||
+        !std::filesystem::is_regular_file(video, ec) ||
         std::filesystem::file_size(video, ec) == 0) {
-        result.issues.push_back(L"Final video_with_audio.mkv is missing or empty");
-    } else if (expectedDurationSeconds > 1.0) {
-        result.videoDurationChecked = probeVideoDurationSeconds(
-            defaultFfmpegPath(sessionPath),
-            video,
-            sessionPath,
-            result.videoDurationSeconds);
+        result.issues.push_back(
+            L"Final video is missing or empty");
+    } else {
+        if (!videoHasAudio) {
+            result.warnings.push_back(
+                L"Final video has no WASAPI audio; video capture remains valid");
+        }
 
-        if (result.videoDurationChecked) {
-            result.videoCoverageRatio =
-                result.videoDurationSeconds / expectedDurationSeconds;
+        if (expectedDurationSeconds > 1.0) {
+            result.videoDurationChecked = probeVideoDurationSeconds(
+                defaultFfmpegPath(sessionPath),
+                video,
+                sessionPath,
+                result.videoDurationSeconds);
 
-            if (result.videoCoverageRatio < 0.90) {
-                std::wstringstream ss;
-                ss << L"Final video covers only "
-                   << std::fixed << std::setprecision(1)
-                   << result.videoCoverageRatio * 100.0
-                   << L"% of the test duration";
-                result.issues.push_back(ss.str());
+            if (result.videoDurationChecked) {
+                result.videoCoverageRatio =
+                    result.videoDurationSeconds / expectedDurationSeconds;
+
+                if (result.videoCoverageRatio < 0.90) {
+                    std::wstringstream ss;
+                    ss << L"Final video covers only "
+                       << std::fixed << std::setprecision(1)
+                       << result.videoCoverageRatio * 100.0
+                       << L"% of the test duration";
+                    result.issues.push_back(ss.str());
+                }
+            } else {
+                result.issues.push_back(
+                    L"Final video duration could not be verified");
             }
-        } else {
-            result.issues.push_back(
-                L"Final video duration could not be verified");
         }
     }
 

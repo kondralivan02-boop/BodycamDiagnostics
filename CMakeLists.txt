@@ -139,10 +139,13 @@ if(BUILD_TESTING)
     target_compile_definitions(StutterIndicatorTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME StutterIndicatorTests COMMAND StutterIndicatorTests)
     add_executable(ValidatorFfmpegFixture tests/ValidatorFfmpegFixture.cpp)
-    add_executable(WindowsDiagnosticsTests tests/WindowsDiagnosticsTests.cpp src/EnvironmentDiagnostics.cpp src/DiagnosticEvidence.cpp src/TestValidator.cpp)
-    target_include_directories(WindowsDiagnosticsTests PRIVATE src)
+    add_executable(WindowsDiagnosticsTests tests/WindowsDiagnosticsTests.cpp src/EnvironmentDiagnostics.cpp src/DiagnosticEvidence.cpp src/TestValidator.cpp src/ToolPreflight.cpp)
+    target_include_directories(
+        WindowsDiagnosticsTests PRIVATE
+        src
+        "${CMAKE_BINARY_DIR}/generated")
     target_compile_definitions(WindowsDiagnosticsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(WindowsDiagnosticsTests PRIVATE wevtapi)
+    target_link_libraries(WindowsDiagnosticsTests PRIVATE wevtapi bcrypt)
     add_test(NAME WindowsDiagnosticsTests COMMAND WindowsDiagnosticsTests $<TARGET_FILE:ValidatorFfmpegFixture>)
     if(MSVC)
         target_compile_options(BuildInfoTests PRIVATE /utf-8 /W4 /WX)
