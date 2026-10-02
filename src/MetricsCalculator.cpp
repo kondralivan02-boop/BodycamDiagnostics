@@ -1,4 +1,5 @@
 #include "MetricsCalculator.h"
+#include "AtomicOutputFile.h"
 
 #include <Windows.h>
 
@@ -277,8 +278,9 @@ bool writeMetricsReport(const MetricsSummary& s,
         return false;
     }
 
-    std::ofstream json(jsonOutput, std::ios::binary | std::ios::trunc);
-    if (!json) {
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
         if (error) *error = L"Cannot create summary.json";
         return false;
     }
@@ -302,10 +304,9 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "  \"stutters_over_250ms\": " << s.stuttersOver250Ms << ",\n"
          << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << "\n"
          << "}\n";
-    json.close();
-
-    std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
-    if (!text) {
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
         if (error) *error = L"Cannot create summary.txt";
         return false;
     }
@@ -327,6 +328,23 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "Stutters >100 ms: " << s.stuttersOver100Ms << "\n"
          << "Stutters >250 ms: " << s.stuttersOver250Ms << "\n"
          << "Maximum frametime: " << s.maxFrameTimeMs << " ms\n";
+
+    if (!json) {
+        if (error)
+            *error = L"Failed while writing summary.json";
+        return false;
+    }
+
+    if (!text) {
+        if (error)
+            *error = L"Failed while writing summary.txt";
+        return false;
+    }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
 
     return true;
 }

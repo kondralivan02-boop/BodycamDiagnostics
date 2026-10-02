@@ -1,4 +1,5 @@
 #include "StutterCorrelator.h"
+#include "AtomicOutputFile.h"
 
 #include <Windows.h>
 
@@ -892,8 +893,9 @@ bool writeStutterCorrelationReport(
         return false;
     }
 
-    std::ofstream json(jsonOutput, std::ios::binary | std::ios::trunc);
-    if (!json) {
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
         if (error)
             *error = L"Cannot create stutter_events.json";
         return false;
@@ -1025,8 +1027,9 @@ bool writeStutterCorrelationReport(
         return false;
     }
 
-    std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
-    if (!text) {
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
         if (error)
             *error = L"Cannot create stutter_events.txt";
         return false;
@@ -1161,6 +1164,11 @@ bool writeStutterCorrelationReport(
             *error = L"Failed while writing stutter_events.txt";
         return false;
     }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
 
     return true;
 }

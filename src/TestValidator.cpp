@@ -1,4 +1,5 @@
 #include "TestValidator.h"
+#include "AtomicOutputFile.h"
 #include "ToolPreflight.h"
 
 #include <Windows.h>
@@ -288,8 +289,9 @@ bool writeTestValidationReport(
     const std::filesystem::path& textOutput,
     std::wstring* error) {
 
-    std::ofstream json(jsonOutput, std::ios::binary | std::ios::trunc);
-    if (!json) {
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
         if (error) *error = L"Cannot create validation.json";
         return false;
     }
@@ -321,8 +323,9 @@ bool writeTestValidationReport(
     }
     json << "]\n}\n";
 
-    std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
-    if (!text) {
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
         if (error) *error = L"Cannot create validation.txt";
         return false;
     }
@@ -343,6 +346,23 @@ bool writeTestValidationReport(
         text << "- " << narrowAscii(issue) << "\n";
     for (const auto& warning : r.warnings)
         text << "Warning: " << narrowAscii(warning) << "\n";
+
+    if (!json) {
+        if (error)
+            *error = L"Failed while writing validation.json";
+        return false;
+    }
+
+    if (!text) {
+        if (error)
+            *error = L"Failed while writing validation.txt";
+        return false;
+    }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
 
     return true;
 }

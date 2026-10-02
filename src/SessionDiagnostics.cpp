@@ -1,4 +1,5 @@
 #include "SessionDiagnostics.h"
+#include "AtomicOutputFile.h"
 
 #include <Windows.h>
 
@@ -203,8 +204,9 @@ bool writeSessionDiagnosticsReport(
     const std::filesystem::path& textOutput,
     std::wstring* error) {
 
-    std::ofstream json(jsonOutput, std::ios::binary);
-    if (!json) {
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
         if (error)
             *error = L"Cannot create session diagnostics JSON";
         return false;
@@ -353,8 +355,9 @@ bool writeSessionDiagnosticsReport(
         return false;
     }
 
-    std::ofstream text(textOutput, std::ios::binary);
-    if (!text) {
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
         if (error)
             *error = L"Cannot create session diagnostics text report";
         return false;
@@ -464,6 +467,11 @@ bool writeSessionDiagnosticsReport(
             *error = L"Failed while writing session diagnostics text report";
         return false;
     }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
 
     return true;
 }

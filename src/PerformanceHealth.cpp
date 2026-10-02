@@ -1,4 +1,5 @@
 #include "PerformanceHealth.h"
+#include "AtomicOutputFile.h"
 
 #include <fstream>
 #include <iomanip>
@@ -74,8 +75,9 @@ bool writePerformanceHealthReport(
     const std::filesystem::path& textOutput,
     std::wstring* error) {
 
-    std::ofstream json(jsonOutput, std::ios::binary | std::ios::trunc);
-    if (!json) {
+    AtomicOutputFile jsonFile(jsonOutput);
+    auto& json = jsonFile.stream();
+    if (!jsonFile.isOpen()) {
         if (error) *error = L"Cannot create performance_health.json";
         return false;
     }
@@ -93,8 +95,9 @@ bool writePerformanceHealthReport(
     }
     json << "]\n}\n";
 
-    std::ofstream text(textOutput, std::ios::binary | std::ios::trunc);
-    if (!text) {
+    AtomicOutputFile textFile(textOutput);
+    auto& text = textFile.stream();
+    if (!textFile.isOpen()) {
         if (error) *error = L"Cannot create performance_health.txt";
         return false;
     }
@@ -106,6 +109,23 @@ bool writePerformanceHealthReport(
 
     for (const auto& finding : r.findings)
         text << "- " << narrowAscii(finding) << "\n";
+
+    if (!json) {
+        if (error)
+            *error = L"Failed while writing performance_health.json";
+        return false;
+    }
+
+    if (!text) {
+        if (error)
+            *error = L"Failed while writing performance_health.txt";
+        return false;
+    }
+
+    if (!jsonFile.commit(error))
+        return false;
+    if (!textFile.commit(error))
+        return false;
 
     return true;
 }
