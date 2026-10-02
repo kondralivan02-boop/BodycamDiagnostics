@@ -174,12 +174,15 @@ $ready = [bool](
     (-not $mirrorConfigured -or $mirrorWritable)
 )
 if (-not $SkipToolExecution) {
+    # The production capture path is Desktop Duplication -> NVENC.
+    # The synthetic color -> NVENC probe is informational only because
+    # some stripped/club FFmpeg environments can reject that artificial
+    # source while the real ddagrab -> h264_nvenc path works correctly.
     $ready = [bool](
         $ready -and
         $presentMonHelp -and
         $nvencListed -and
         $ddagrabListed -and
-        $nvencSmoke -and
         $ddagrabSmoke
     )
 }
@@ -229,8 +232,8 @@ $lines = @(
     ('PresentMon --help: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($presentMonHelp) { 'OK' } else { 'FAILED' })),
     ('h264_nvenc listed: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($nvencListed) { 'YES' } else { 'NO' })),
     ('ddagrab listed: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($ddagrabListed) { 'YES' } else { 'NO' })),
-    ('NVENC smoke encode: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($nvencSmoke) { 'OK' } else { 'FAILED' })),
-    ('DDAGrab + NVENC smoke capture: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($ddagrabSmoke) { 'OK' } else { 'FAILED' })),
+    ('NVENC synthetic smoke encode (informational): ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($nvencSmoke) { 'OK' } else { 'FAILED' })),
+    ('DDAGrab + NVENC production-path smoke capture: ' + $(if ($SkipToolExecution) { 'SKIPPED' } elseif ($ddagrabSmoke) { 'OK' } else { 'FAILED' })),
     ('Sessions writable: ' + $(if ($sessionsWritable) { 'YES' } else { 'NO' })),
     ('Persistent mirror: ' + $(if (-not $mirrorConfigured) { 'NOT CONFIGURED' } elseif ($mirrorWritable) { 'WRITABLE' } else { 'NOT WRITABLE' })),
     ('Mirror path: ' + $(if ($mirrorConfigured) { $mirrorPath } else { '-' })),

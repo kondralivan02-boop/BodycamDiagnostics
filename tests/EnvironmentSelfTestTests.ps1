@@ -13,6 +13,22 @@ if ($parseErrors.Count -ne 0) {
     throw "ValidateEnvironment.ps1 has PowerShell parse errors: $($parseErrors[0].Message)"
 }
 
+$scriptText = Get-Content -Raw -LiteralPath $scriptPath
+$readyPolicy = [regex]::Match(
+    $scriptText,
+    'if \(-not \$SkipToolExecution\) \{\s*#.*?\$ready = \[bool\]\((?<body>.*?)\)\s*\}',
+    [System.Text.RegularExpressions.RegexOptions]::Singleline)
+if (-not $readyPolicy.Success) {
+    throw 'Cannot locate execution readiness policy'
+}
+$readyBody = $readyPolicy.Groups['body'].Value
+if ($readyBody -match '\$nvencSmoke') {
+    throw 'Synthetic NVENC smoke must remain informational and must not gate Ready'
+}
+if ($readyBody -notmatch '\$ddagrabSmoke') {
+    throw 'Production ddagrab -> NVENC smoke must gate Ready'
+}
+
 $root = Join-Path $env:TEMP ('BodycamDiagnostics-selftest-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path (Join-Path $root 'Tools') | Out-Null
 
