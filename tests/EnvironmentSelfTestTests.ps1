@@ -29,6 +29,12 @@ try {
         "$ffHash  ffmpeg.exe"
     ) | Set-Content -Encoding ASCII -LiteralPath (Join-Path $root 'runtime-tools.sha256')
 
+    $mirror = Join-Path $root 'PersistentMirror'
+    @(
+        '[storage]',
+        "mirror_path=$mirror"
+    ) | Set-Content -Encoding UTF8 -LiteralPath (Join-Path $root 'settings.ini')
+
     $output = Join-Path $root 'SelfTest'
     & $scriptPath -Root $root -OutputDirectory $output -SkipToolExecution
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -39,10 +45,13 @@ try {
     if (-not (Test-Path -LiteralPath $txtPath -PathType Leaf)) { throw 'Missing text self-test report' }
 
     $report = Get-Content -Raw -LiteralPath $jsonPath | ConvertFrom-Json
-    if ($report.schemaVersion -ne 1) { throw 'Unexpected self-test schema version' }
+    if ($report.schemaVersion -ne 2) { throw 'Unexpected self-test schema version' }
     if (-not $report.ready) { throw 'Fixture self-test should be ready when execution is skipped' }
     if (-not $report.tools.presentMon.trusted) { throw 'PresentMon fixture should be trusted' }
     if (-not $report.tools.ffmpeg.trusted) { throw 'FFmpeg fixture should be trusted' }
+    if (-not $report.storage.sessionsWritable) { throw 'Sessions path must be writable' }
+    if (-not $report.storage.mirrorConfigured) { throw 'Mirror fixture must be detected' }
+    if (-not $report.storage.mirrorWritable) { throw 'Configured mirror must be writable' }
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
