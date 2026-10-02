@@ -1,4 +1,5 @@
 #include "CrashCollector.h"
+#include "AtomicOutputFile.h"
 
 #include <Windows.h>
 
@@ -53,14 +54,7 @@ bool copyOne(const std::filesystem::path& source,
     if (ec)
         return false;
 
-    ec.clear();
-    std::filesystem::copy_file(
-        source,
-        target,
-        std::filesystem::copy_options::overwrite_existing,
-        ec);
-
-    if (ec)
+    if (!atomicCopyFile(source, target))
         return false;
 
     copiedBytes += size;

@@ -83,3 +83,50 @@ using AtomicOutputFile =
     BasicAtomicOutputFile<std::ofstream>;
 using AtomicWideOutputFile =
     BasicAtomicOutputFile<std::wofstream>;
+
+inline bool atomicCopyFile(
+    const std::filesystem::path& source,
+    const std::filesystem::path& target,
+    std::wstring* error = nullptr) {
+
+    const auto temporary =
+        std::filesystem::path(target.wstring() + L".tmp");
+
+    std::error_code ec;
+    std::filesystem::remove(temporary, ec);
+
+    ec.clear();
+    std::filesystem::copy_file(
+        source,
+        temporary,
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+
+    if (ec) {
+        if (error) {
+            *error =
+                L"Cannot copy temporary evidence file: " +
+                std::to_wstring(ec.value());
+        }
+        std::filesystem::remove(temporary, ec);
+        return false;
+    }
+
+    if (!MoveFileExW(
+            temporary.c_str(),
+            target.c_str(),
+            MOVEFILE_REPLACE_EXISTING |
+                MOVEFILE_WRITE_THROUGH)) {
+        const DWORD code = GetLastError();
+        if (error) {
+            *error =
+                L"Cannot atomically publish copied evidence: " +
+                std::to_wstring(code);
+        }
+
+        std::filesystem::remove(temporary, ec);
+        return false;
+    }
+
+    return true;
+}

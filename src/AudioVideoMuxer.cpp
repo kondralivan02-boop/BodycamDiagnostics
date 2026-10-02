@@ -1,4 +1,5 @@
 #include "AudioVideoMuxer.h"
+#include "AtomicOutputFile.h"
 
 #include <Windows.h>
 
@@ -187,14 +188,16 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
     const auto preservedCaptureLog = sessionDirectory / L"video_capture.log";
     ec.clear();
     if (std::filesystem::is_regular_file(captureLog, ec)) {
-        ec.clear();
-        std::filesystem::copy_file(
-            captureLog,
-            preservedCaptureLog,
-            std::filesystem::copy_options::overwrite_existing,
-            ec);
-        if (ec)
-            cleanupWarning += L"Could not preserve video_capture.log";
+        std::wstring preserveError;
+        if (!atomicCopyFile(
+                captureLog,
+                preservedCaptureLog,
+                &preserveError)) {
+            cleanupWarning +=
+                L"Could not preserve video_capture.log";
+            if (!preserveError.empty())
+                cleanupWarning += L": " + preserveError;
+        }
     }
 
     if (audioAvailable) {
