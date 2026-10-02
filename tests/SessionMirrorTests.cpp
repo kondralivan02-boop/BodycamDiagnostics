@@ -10,8 +10,11 @@
 
 namespace {
 void check(bool ok, const char* message) {
-    if (!ok)
+    if (!ok) {
+        std::cerr << "SessionMirrorTests failure: "
+                  << message << "\n";
         throw std::runtime_error(message);
+    }
 }
 }
 
