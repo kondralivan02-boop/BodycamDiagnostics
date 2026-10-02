@@ -21,12 +21,14 @@ public:
 
 private:
     void worker();
-    void syncOnce(bool finalPass);
-    void copyRelativeFile(const std::filesystem::path& relative);
+    bool syncOnce(bool finalPass);
+    bool copyRelativeFile(const std::filesystem::path& relative);
+    void recordFailure(int errorCode);
 
     std::filesystem::path sourceSession_;
     std::filesystem::path targetSession_;
     std::atomic_bool running_{false};
+    std::atomic_int lastErrorCode_{0};
     std::thread thread_;
     std::map<std::filesystem::path, std::uintmax_t> previousVideoSizes_;
 };

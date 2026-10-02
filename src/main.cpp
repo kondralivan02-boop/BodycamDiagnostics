@@ -1074,6 +1074,28 @@ void updateLiveOverlay() {
         return;
     }
 
+    if (gMirror) {
+        std::wstring mirrorEvent;
+        if (!gMirror->healthy(&mirrorEvent)) {
+            logEvent(
+                L"Persistent mirror потерян во время теста  •  " +
+                (mirrorEvent.empty()
+                    ? std::wstring(L"runtime failure")
+                    : mirrorEvent));
+
+            gEnvironmentCapabilities.sources.push_back({
+                "persistent_mirror_runtime",
+                "failed_during_capture",
+                0,
+                false,
+                "Configured crash-survival mirror failed after startup"
+            });
+
+            stopSession();
+            return;
+        }
+    }
+
     if (gPresentMon) {
         std::wstring presentMonEvent;
         if (!gPresentMon->healthy(&presentMonEvent)) {

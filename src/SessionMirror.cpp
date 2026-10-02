@@ -15,6 +15,8 @@ SessionMirror::~SessionMirror() {
 bool SessionMirror::start(std::wstring* error) {
     if (running()) return true;
 
+    lastErrorCode_.store(0);
+
     std::error_code ec;
     std::filesystem::create_directories(targetSession_, ec);
     if (ec) {
@@ -39,23 +41,65 @@ void SessionMirror::stop() {
     syncOnce(true);
 }
 
-void SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
+bool SessionMirror::healthy(std::wstring* error) const {
+    const int errorCode = lastErrorCode_.load();
+    if (errorCode == 0)
+        return true;
+
+    if (error) {
+        *error =
+            L"Persistent mirror runtime failure: " +
+            std::to_wstring(errorCode);
+    }
+    return false;
+}
+
+void SessionMirror::recordFailure(int errorCode) {
+    if (errorCode == 0)
+        errorCode = ERROR_WRITE_FAULT;
+
+    int expected = 0;
+    lastErrorCode_.compare_exchange_strong(
+        expected,
+        errorCode);
+}
+
+bool SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
     const auto source = sourceSession_ / relative;
     const auto target = targetSession_ / relative;
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(source, ec)) return;
+    if (!std::filesystem::is_regular_file(source, ec)) {
+        if (ec) {
+            recordFailure(ec.value());
+            return false;
+        }
+        return true;
+    }
 
     ec.clear();
     std::filesystem::create_directories(target.parent_path(), ec);
-    if (ec) return;
+    if (ec) {
+        recordFailure(ec.value());
+        return false;
+    }
 
     ec.clear();
-    std::filesystem::copy_file(source, target,
-                               std::filesystem::copy_options::overwrite_existing, ec);
+    std::filesystem::copy_file(
+        source,
+        target,
+        std::filesystem::copy_options::overwrite_existing,
+        ec);
+
+    if (ec) {
+        recordFailure(ec.value());
+        return false;
+    }
+
+    return true;
 }
 
-void SessionMirror::syncOnce(bool finalPass) {
+bool SessionMirror::syncOnce(bool finalPass) {
     static constexpr const wchar_t* kLightweightFiles[] = {
         L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
@@ -74,12 +118,20 @@ void SessionMirror::syncOnce(bool finalPass) {
         L"report_bundle.zip"
     };
 
-    for (const auto* name : kLightweightFiles)
-        copyRelativeFile(name);
+    for (const auto* name : kLightweightFiles) {
+        if (!copyRelativeFile(name))
+            return false;
+    }
 
     const auto videoDir = sourceSession_ / L"video";
     std::error_code ec;
-    if (!std::filesystem::is_directory(videoDir, ec)) return;
+    if (!std::filesystem::is_directory(videoDir, ec)) {
+        if (ec) {
+            recordFailure(ec.value());
+            return false;
+        }
+        return true;
+    }
 
     for (std::filesystem::directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
         const auto& entry = *it;
@@ -111,14 +163,26 @@ void SessionMirror::syncOnce(bool finalPass) {
         }
         ec.clear();
 
-        if (needsCopy)
-            copyRelativeFile(relative);
+        if (needsCopy &&
+            !copyRelativeFile(relative)) {
+            return false;
+        }
     }
+
+    if (ec) {
+        recordFailure(ec.value());
+        return false;
+    }
+
+    return true;
 }
 
 void SessionMirror::worker() {
     while (running_.load()) {
-        syncOnce(false);
+        if (!syncOnce(false)) {
+            running_.store(false);
+            return;
+        }
 
         for (int i = 0; i < 10 && running_.load(); ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
