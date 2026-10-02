@@ -205,7 +205,8 @@ TestValidationResult validateTestSession(
     const std::filesystem::path& sessionPath,
     const MetricsSummary& summary,
     double expectedDurationSeconds,
-    bool gameExitedUnexpectedly) {
+    bool gameExitedUnexpectedly,
+    bool ffmpegTrustedForProbe) {
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
@@ -247,27 +248,35 @@ TestValidationResult validateTestSession(
         }
 
         if (expectedDurationSeconds > 1.0) {
-            result.videoDurationChecked = probeVideoDurationSeconds(
-                defaultFfmpegPath(sessionPath),
-                video,
-                sessionPath,
-                result.videoDurationSeconds);
-
-            if (result.videoDurationChecked) {
-                result.videoCoverageRatio =
-                    result.videoDurationSeconds / expectedDurationSeconds;
-
-                if (result.videoCoverageRatio < 0.90) {
-                    std::wstringstream ss;
-                    ss << L"Final video covers only "
-                       << std::fixed << std::setprecision(1)
-                       << result.videoCoverageRatio * 100.0
-                       << L"% of the test duration";
-                    result.issues.push_back(ss.str());
-                }
-            } else {
+            if (!ffmpegTrustedForProbe) {
                 result.issues.push_back(
-                    L"Final video duration could not be verified");
+                    L"Final video duration was not probed because FFmpeg trust revalidation failed");
+            } else {
+                result.videoDurationChecked =
+                    probeVideoDurationSeconds(
+                        defaultFfmpegPath(sessionPath),
+                        video,
+                        sessionPath,
+                        result.videoDurationSeconds);
+
+                if (result.videoDurationChecked) {
+                    result.videoCoverageRatio =
+                        result.videoDurationSeconds /
+                        expectedDurationSeconds;
+
+                    if (result.videoCoverageRatio < 0.90) {
+                        std::wstringstream ss;
+                        ss << L"Final video covers only "
+                           << std::fixed
+                           << std::setprecision(1)
+                           << result.videoCoverageRatio * 100.0
+                           << L"% of the test duration";
+                        result.issues.push_back(ss.str());
+                    }
+                } else {
+                    result.issues.push_back(
+                        L"Final video duration could not be verified");
+                }
             }
         }
     }

@@ -618,8 +618,31 @@ void stopSession() {
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - gSessionStartedAt).count();
 
+    const auto runtimeManifest =
+        appDir() / L"runtime-tools.sha256";
+    const bool ffmpegTrustedForFinalization =
+        runtimeToolTrusted(
+            gRuntimeFfmpegExe,
+            runtimeManifest);
+
+    gEnvironmentCapabilities.sources.push_back({
+        "ffmpeg_finalization_trust",
+        ffmpegTrustedForFinalization
+            ? "verified"
+            : "failed",
+        0,
+        false,
+        ffmpegTrustedForFinalization
+            ? "FFmpeg SHA-256 revalidated immediately before finalization"
+            : "FFmpeg or runtime manifest changed after startup; external finalization blocked"
+    });
+
     std::wstring muxError;
-    if (finalizeSessionVideo(
+    if (!ffmpegTrustedForFinalization) {
+        logEvent(
+            L"Финализация видео заблокирована  •  "
+            L"FFmpeg trust revalidation failed; raw capture preserved");
+    } else if (finalizeSessionVideo(
             gRuntimeFfmpegExe,
             sessionPath,
             includeAudioInFinalVideo,
@@ -720,11 +743,29 @@ void stopSession() {
             logEvent(L"Crash diagnostics  •  " + crashData.details);
     }
 
+    const bool ffmpegTrustedForProbe =
+        runtimeToolTrusted(
+            gRuntimeFfmpegExe,
+            runtimeManifest);
+
+    gEnvironmentCapabilities.sources.push_back({
+        "ffmpeg_validation_trust",
+        ffmpegTrustedForProbe
+            ? "verified"
+            : "failed",
+        0,
+        false,
+        ffmpegTrustedForProbe
+            ? "FFmpeg SHA-256 revalidated immediately before duration probe"
+            : "FFmpeg or runtime manifest changed after finalization; duration probe blocked"
+    });
+
     const auto validation = validateTestSession(
         sessionPath,
         summary,
         sessionDurationSeconds,
-        gGameExitedUnexpectedly);
+        gGameExitedUnexpectedly,
+        ffmpegTrustedForProbe);
 
     std::wstring validationError;
     if (writeTestValidationReport(

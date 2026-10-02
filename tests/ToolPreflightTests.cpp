@@ -57,6 +57,12 @@ int wmain(int argc, wchar_t** argv) {
           "repository runtime manifest should be found");
     check(trustedManifestPreflight.hashManifestTrusted,
           "repository runtime manifest must match the build trust anchor");
+    check(runtimeHashManifestTrusted(trustedManifest),
+          "trusted runtime manifest helper must accept build-anchored manifest");
+    check(!runtimeHashManifestTrusted(manifest),
+          "runtime manifest helper must reject a modified manifest");
+    check(!runtimeToolTrusted(fakeFfmpeg, trustedManifest),
+          "runtime trust helper must reject a modified executable");
 
     const auto preflight = runToolPreflight(preferred, fakeFfmpeg, manifest);
     check(preflight.hashManifestFound,

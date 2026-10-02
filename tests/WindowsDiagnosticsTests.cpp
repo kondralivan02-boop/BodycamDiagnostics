@@ -16,18 +16,18 @@ int main(int argc, char** argv) {
     std::ofstream(root / L"video_with_audio.mkv") << "fixture";
     MetricsSummary metrics; metrics.valid = true;
     // Duration <=1 avoids invoking FFmpeg; this case isolates the optional-source policy.
-    const auto valid = validateTestSession(root, metrics, 0.5, false);
+    const auto valid = validateTestSession(root, metrics, 0.5, false, false);
     check(valid.valid, "missing optional telemetry must not invalidate capture");
     check(!valid.warnings.empty(), "missing telemetry must be reported");
-    check(!validateTestSession(root, metrics, 0.5, true).valid, "game exit still invalidates capture");
+    check(!validateTestSession(root, metrics, 0.5, true, false).valid, "game exit still invalidates capture");
     metrics.valid = false;
-    check(!validateTestSession(root, metrics, 0.5, false).valid, "missing metrics still invalidates capture");
+    check(!validateTestSession(root, metrics, 0.5, false, false).valid, "missing metrics still invalidates capture");
     metrics.valid = true;
     std::filesystem::remove(root / L"video_with_audio.mkv");
-    check(!validateTestSession(root, metrics, 0.5, false).valid, "missing video still invalidates capture");
+    check(!validateTestSession(root, metrics, 0.5, false, false).valid, "missing video still invalidates capture");
 
     std::ofstream(root / L"video_without_audio.mkv") << "video-only fixture";
-    check(validateTestSession(root, metrics, 0.5, false).valid,
+    check(validateTestSession(root, metrics, 0.5, false, false).valid,
           "video_without_audio.mkv must satisfy required final-video validation");
     std::filesystem::remove(root / L"video_without_audio.mkv");
 
@@ -44,11 +44,28 @@ int main(int argc, char** argv) {
     durationMetrics.valid = true;
     durationMetrics.durationSeconds = 10.0;
     const auto fallbackValidation =
-        validateTestSession(runtimeSession, durationMetrics, 10.0, false);
+        validateTestSession(
+            runtimeSession,
+            durationMetrics,
+            10.0,
+            false,
+            true);
     check(fallbackValidation.valid,
           "validator must accept root-level FFmpeg runtime fallback");
     check(fallbackValidation.videoDurationChecked,
           "root-level FFmpeg fallback must be used for duration probe");
+
+    const auto untrustedProbe =
+        validateTestSession(
+            runtimeSession,
+            durationMetrics,
+            10.0,
+            false,
+            false);
+    check(!untrustedProbe.valid,
+          "untrusted FFmpeg must block duration-probe validation");
+    check(!untrustedProbe.videoDurationChecked,
+          "untrusted FFmpeg must never be executed for duration probe");
     const auto caps = probeEnvironmentCapabilities(GetCurrentProcessId());
     check(caps.sources.size() == 3, "both channels probed independently");
     check(caps.sources.front().status == "available", "current process query");

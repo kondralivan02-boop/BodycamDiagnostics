@@ -21,7 +21,8 @@ TestValidationResult validateTestSession(
     const std::filesystem::path& sessionPath,
     const MetricsSummary& summary,
     double expectedDurationSeconds,
-    bool gameExitedUnexpectedly);
+    bool gameExitedUnexpectedly,
+    bool ffmpegTrustedForProbe);
 
 bool writeTestValidationReport(
     const TestValidationResult& result,

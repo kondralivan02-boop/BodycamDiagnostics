@@ -215,6 +215,50 @@ std::string expectedRuntimeToolSha256(
     return matched;
 }
 
+bool runtimeHashManifestTrusted(
+    const std::filesystem::path& manifest) {
+
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(manifest, ec))
+        return false;
+
+    const auto actual =
+        fileSha256Hex(manifest);
+
+    return
+        !actual.empty() &&
+        lowerAscii(actual) ==
+            lowerAscii(kRuntimeToolsManifestSha256);
+}
+
+bool runtimeToolTrusted(
+    const std::filesystem::path& tool,
+    const std::filesystem::path& manifest) {
+
+    if (!runtimeHashManifestTrusted(manifest))
+        return false;
+
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(tool, ec))
+        return false;
+
+    const auto expected =
+        expectedRuntimeToolSha256(
+            manifest,
+            tool.filename());
+
+    if (expected.empty())
+        return false;
+
+    const auto actual =
+        fileSha256Hex(tool);
+
+    return
+        !actual.empty() &&
+        lowerAscii(actual) ==
+            lowerAscii(expected);
+}
+
 std::filesystem::path resolveRuntimeTool(
     const std::filesystem::path& appDirectory,
     const std::filesystem::path& fileName) {
@@ -245,35 +289,24 @@ ToolPreflightResult runToolPreflight(
     ec.clear();
     r.hashManifestFound = std::filesystem::is_regular_file(hashManifest, ec);
 
-    const auto actualManifestSha256 =
-        r.hashManifestFound
-            ? fileSha256Hex(hashManifest)
-            : std::string{};
-
     r.hashManifestTrusted =
-        r.hashManifestFound &&
-        !actualManifestSha256.empty() &&
-        lowerAscii(actualManifestSha256) ==
-            lowerAscii(kRuntimeToolsManifestSha256);
+        runtimeHashManifestTrusted(hashManifest);
 
-    const auto expectedPresentMon =
-        r.hashManifestTrusted
-            ? expectedRuntimeToolSha256(
-                  hashManifest,
-                  presentMonExe.filename())
-            : std::string{};
+    if (r.presentMonFound &&
+        r.hashManifestTrusted) {
+        r.presentMonTrusted =
+            runtimeToolTrusted(
+                presentMonExe,
+                hashManifest);
+    }
 
-    const auto expectedFfmpeg =
-        r.hashManifestTrusted
-            ? expectedRuntimeToolSha256(
-                  hashManifest,
-                  ffmpegExe.filename())
-            : std::string{};
-
-    if (r.presentMonFound && !expectedPresentMon.empty())
-        r.presentMonTrusted = fileSha256Hex(presentMonExe) == expectedPresentMon;
-    if (r.ffmpegFound && !expectedFfmpeg.empty())
-        r.ffmpegTrusted = fileSha256Hex(ffmpegExe) == expectedFfmpeg;
+    if (r.ffmpegFound &&
+        r.hashManifestTrusted) {
+        r.ffmpegTrusted =
+            runtimeToolTrusted(
+                ffmpegExe,
+                hashManifest);
+    }
 
     std::wstring d;
     d += L"Runtime hash manifest: ";

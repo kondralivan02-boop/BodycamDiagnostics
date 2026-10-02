@@ -23,6 +23,13 @@ std::string expectedRuntimeToolSha256(
     const std::filesystem::path& manifest,
     const std::filesystem::path& fileName);
 
+bool runtimeHashManifestTrusted(
+    const std::filesystem::path& manifest);
+
+bool runtimeToolTrusted(
+    const std::filesystem::path& tool,
+    const std::filesystem::path& manifest);
+
 std::filesystem::path resolveRuntimeTool(
     const std::filesystem::path& appDirectory,
     const std::filesystem::path& fileName);
