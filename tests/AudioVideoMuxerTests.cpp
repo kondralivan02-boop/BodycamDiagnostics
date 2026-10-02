@@ -58,6 +58,35 @@ int wmain(int argc, wchar_t** argv) {
     check(readAll(root / L"video_capture.log") == "ffmpeg warning evidence",
           "preserved FFmpeg log must keep original evidence");
 
+
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / L"video");
+
+    {
+        std::ofstream(root / L"video" / L"video_00000.mkv", std::ios::binary)
+            << "raw video without audio";
+        std::ofstream(root / L"video" / L"video_capture.log", std::ios::binary)
+            << "ffmpeg warning evidence without audio";
+    }
+
+    error.clear();
+    const bool videoOnlyOk =
+        muxSessionVideoWithAudio(fixture, root, &error);
+
+    check(videoOnlyOk,
+          "video finalization must succeed when optional WASAPI audio is missing");
+    check(std::filesystem::is_regular_file(root / L"video_without_audio.mkv"),
+          "video-only finalization must create video_without_audio.mkv");
+    check(!std::filesystem::exists(root / L"video_with_audio.mkv"),
+          "audio-labelled output must not be created when audio is missing");
+    check(!std::filesystem::exists(root / L"video"),
+          "raw video directory should be removed after video-only finalization");
+    check(std::filesystem::is_regular_file(root / L"video_capture.log"),
+          "FFmpeg capture log must survive video-only finalization");
+    check(readAll(root / L"video_capture.log") ==
+              "ffmpeg warning evidence without audio",
+          "video-only finalization must preserve FFmpeg evidence");
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
 }
