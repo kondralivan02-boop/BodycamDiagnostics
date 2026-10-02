@@ -62,6 +62,33 @@ int main() {
     check(!std::filesystem::exists(temporary),
           "committed temporary file must not remain");
 
+    const auto copySource = root / L"source.log";
+    const auto copyTarget = root / L"copied.log";
+    const auto copyTemporary = root / L"copied.log.tmp";
+
+    {
+        std::ofstream(copySource, std::ios::binary | std::ios::trunc)
+            << "complete-evidence";
+        std::ofstream(copyTarget, std::ios::binary | std::ios::trunc)
+            << "old-evidence";
+    }
+
+    std::wstring copyError;
+    check(atomicCopyFile(copySource, copyTarget, &copyError),
+          "atomic evidence copy must succeed");
+    check(readAll(copyTarget) == "complete-evidence",
+          "atomic evidence copy must replace target completely");
+    check(!std::filesystem::exists(copyTemporary),
+          "atomic evidence copy must leave no temporary file");
+
+    std::filesystem::remove(copySource, ec);
+    check(!atomicCopyFile(copySource, copyTarget, &copyError),
+          "missing copy source must fail");
+    check(readAll(copyTarget) == "complete-evidence",
+          "failed copy must preserve previous complete target");
+    check(!std::filesystem::exists(copyTemporary),
+          "failed copy must clean temporary file");
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Atomic output tests passed\n";
 }
