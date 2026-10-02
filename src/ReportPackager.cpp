@@ -232,8 +232,16 @@ bool currentOffset(
         return false;
     }
 
+    const auto streamOffset =
+        static_cast<std::streamoff>(position);
+    if (streamOffset < 0) {
+        if (error)
+            *error = L"Invalid report ZIP offset";
+        return false;
+    }
+
     const auto offset =
-        static_cast<std::uint64_t>(position);
+        static_cast<std::uint64_t>(streamOffset);
     if (offset >
         static_cast<std::uint64_t>(
             (std::numeric_limits<std::uint32_t>::max)())) {
