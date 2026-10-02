@@ -2,7 +2,11 @@
 
 bool requiredCaptureSourcesReady(
     bool presentMonStarted,
-    bool recorderStarted) noexcept {
+    bool recorderStarted,
+    bool mirrorConfigured,
+    bool mirrorStarted) noexcept {
 
-    return presentMonStarted && recorderStarted;
+    return presentMonStarted &&
+           recorderStarted &&
+           (!mirrorConfigured || mirrorStarted);
 }

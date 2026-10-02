@@ -359,14 +359,18 @@ void startSession() {
         logEvent(L"Cannot save environment capabilities profile");
 
     const auto mirrorRoot = configuredMirrorRoot();
-    if (!mirrorRoot.empty()) {
+    const bool mirrorConfigured = !mirrorRoot.empty();
+    bool mirrorStarted = false;
+    std::wstring mirrorError;
+
+    if (mirrorConfigured) {
         gMirror = std::make_unique<SessionMirror>(
             gSession->sessionPath(), mirrorRoot);
 
-        std::wstring mirrorError;
-        if (gMirror->start(&mirrorError))
+        if (gMirror->start(&mirrorError)) {
+            mirrorStarted = true;
             logEvent(L"Persistent mirror  •  " + gMirror->targetPath().wstring());
-        else {
+        } else {
             logEvent(L"Persistent mirror недоступен  •  " + mirrorError);
             gMirror.reset();
         }
@@ -427,7 +431,9 @@ void startSession() {
 
     if (!requiredCaptureSourcesReady(
             presentMonStarted,
-            recorderStarted)) {
+            recorderStarted,
+            mirrorConfigured,
+            mirrorStarted)) {
 
         if (!saveEnvironmentCapabilities(
                 gEnvironmentCapabilities,
@@ -454,6 +460,16 @@ void startSession() {
                 recorderError.empty()
                     ? L"startup failed"
                     : recorderError;
+        }
+
+        if (mirrorConfigured && !mirrorStarted) {
+            if (!failure.empty())
+                failure += L"\n";
+            failure += L"Persistent mirror: ";
+            failure +=
+                mirrorError.empty()
+                    ? L"startup failed"
+                    : mirrorError;
         }
 
         abortSessionStartup(failure);
