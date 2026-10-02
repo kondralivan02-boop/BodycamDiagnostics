@@ -113,8 +113,6 @@ bool SessionMirror::syncOnce(bool finalPass) {
         L"telemetry.csv",
         L"video\\video_capture.log",
         L"video_capture.log",
-        L"video_with_audio.mkv",
-        L"video_without_audio.mkv",
         L"summary.json",
         L"summary.txt",
         L"report_bundle.zip"
@@ -123,6 +121,18 @@ bool SessionMirror::syncOnce(bool finalPass) {
     for (const auto* name : kLightweightFiles) {
         if (!copyRelativeFile(name))
             return false;
+    }
+
+    if (finalPass) {
+        static constexpr const wchar_t* kFinalOnlyFiles[] = {
+            L"video_with_audio.mkv",
+            L"video_without_audio.mkv"
+        };
+
+        for (const auto* name : kFinalOnlyFiles) {
+            if (!copyRelativeFile(name))
+                return false;
+        }
     }
 
     const auto videoDir = sourceSession_ / L"video";
