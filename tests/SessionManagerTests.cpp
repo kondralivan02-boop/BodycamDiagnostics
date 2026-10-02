@@ -33,6 +33,19 @@ int main() {
     check(session.start(L"Atomic State Test"),
           "session must start");
 
+    const auto buildInfoPath =
+        session.sessionPath() / L"build_info.json";
+    check(std::filesystem::is_regular_file(buildInfoPath),
+          "session start must publish build_info.json");
+
+    const auto buildInfo = readAll(buildInfoPath);
+    check(buildInfo.find("\"commit_sha\"") != std::string::npos,
+          "build provenance must include commit SHA");
+    check(buildInfo.find("\"branch\"") != std::string::npos,
+          "build provenance must include branch");
+    check(buildInfo.find("\"ci_run\"") != std::string::npos,
+          "build provenance must include CI run");
+
     const auto statePath =
         session.sessionPath() / L"session.json";
     const auto tempPath =
