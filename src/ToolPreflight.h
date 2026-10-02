@@ -12,7 +12,7 @@ struct ToolPreflightResult {
     std::wstring details;
 
     bool recordingReady() const noexcept {
-        return ffmpegFound && nvencAvailable && ddagrabAvailable;
+        return ffmpegFound && ffmpegTrusted && nvencAvailable && ddagrabAvailable;
     }
 };
 

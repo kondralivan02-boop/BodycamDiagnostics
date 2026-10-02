@@ -88,6 +88,8 @@ bool gFullscreenHudActive = false;
 
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
+std::filesystem::path gRuntimePresentMonExe;
+std::filesystem::path gRuntimeFfmpegExe;
 
 DWORD gGamePid = 0;
 bool gRunning = false;
@@ -240,11 +242,14 @@ void startSession() {
     const auto ffmpegExe =
         resolveRuntimeTool(runtimeRoot, L"ffmpeg.exe");
 
+    gRuntimePresentMonExe = presentMonExe;
+    gRuntimeFfmpegExe = ffmpegExe;
+
     const auto preflight = runToolPreflight(
         presentMonExe,
         ffmpegExe);
 
-    if (!preflight.presentMonFound || !preflight.recordingReady()) {
+    if (!preflight.presentMonFound || !preflight.presentMonTrusted || !preflight.recordingReady()) {
         const std::wstring message =
             L"Предварительная проверка не пройдена:\n\n" +
             preflight.details +
@@ -445,7 +450,7 @@ void stopSession() {
 
     std::wstring muxError;
     if (muxSessionVideoWithAudio(
-            appDir() / L"Tools" / L"ffmpeg.exe",
+            gRuntimeFfmpegExe,
             sessionPath,
             &muxError)) {
         logEvent(L"Видео со звуком  •  video_with_audio.mkv");

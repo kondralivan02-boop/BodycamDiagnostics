@@ -37,6 +37,7 @@ int main() {
     const auto preflight = runToolPreflight(preferred, fakeFfmpeg);
     check(preflight.ffmpegFound, "test ffmpeg fixture should be found");
     check(!preflight.ffmpegTrusted, "unknown ffmpeg hash must not be trusted");
+    check(!preflight.recordingReady(), "untrusted ffmpeg must block recording readiness");
 
     std::ofstream(preferred) << "fixture";
     check(resolveRuntimeTool(root, L"PresentMon.exe") == preferred,
