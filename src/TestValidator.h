@@ -22,11 +22,11 @@ TestValidationResult validateTestSession(
     const MetricsSummary& summary,
     double expectedDurationSeconds,
     bool gameExitedUnexpectedly,
-    bool ffmpegTrustedForProbe);
+    bool ffmpegTrustedForProbe,
+    double requestedVideoSeconds = 0.0);
 
 bool writeTestValidationReport(
     const TestValidationResult& result,
     const std::filesystem::path& jsonOutput,
     const std::filesystem::path& textOutput,
     std::wstring* error = nullptr);
-

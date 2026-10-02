@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -16,6 +17,7 @@
 #include "AudioVideoMuxer.h"
 #include "CrashCollector.h"
 #include "CaptureStartupPolicy.h"
+#include "CollectionPolicy.h"
 #include "BodycamLogs.h"
 #include "EnvironmentDiagnostics.h"
 #include "DiagnosticsOverlay.h"
@@ -26,6 +28,7 @@
 #include "PresentMonController.h"
 #include "ProcessFinder.h"
 #include "RecorderController.h"
+#include "RecordingTimeline.h"
 #include "ReportPackager.h"
 #include "SessionManager.h"
 #include "SessionDiagnostics.h"
@@ -43,8 +46,13 @@ constexpr int ID_OPEN_SESSION = 1003;
 constexpr int ID_COPY_REPORT = 1004;
 constexpr int ID_STATUS = 1005;
 constexpr int ID_LOG = 1006;
+constexpr int ID_RECORD = 1007;
+constexpr int ID_VIDEO_STATUS = 1008;
+constexpr int ID_GIZMO = 1009;
+constexpr int ID_HELP = 1010;
 constexpr int ID_TIMER = 1;
 constexpr int HOTKEY_TOGGLE = 2001;
+constexpr int HOTKEY_RECORD = 2002;
 
 constexpr COLORREF COLOR_BG = RGB(13, 16, 22);
 constexpr COLORREF COLOR_PANEL = RGB(22, 27, 36);
@@ -65,6 +73,11 @@ HWND gOpenSession{};
 HWND gCopyReport{};
 HWND gStatus{};
 HWND gLog{};
+HWND gRecord{};
+HWND gVideoStatus{};
+HWND gGizmo{};
+HWND gHelp{};
+bool gGizmoMode = false;
 
 HFONT gTitleFont{};
 HFONT gSubtitleFont{};
@@ -81,6 +94,8 @@ std::unique_ptr<RecorderController> gRecorder;
 std::unique_ptr<TelemetrySampler> gTelemetry;
 std::unique_ptr<SessionMirror> gMirror;
 std::unique_ptr<AudioLoopbackRecorder> gAudio;
+bool gAudioCaptured = false;
+RecordingTimeline gRecording;
 
 DiagnosticsOverlay gOverlay;
 FullscreenOverlayBridge gFullscreenOverlay;
@@ -200,7 +215,21 @@ void updateControlsForRunningState() {
     if (!gToggle) return;
 
     SetWindowTextW(gToggle, gRunning ? L"Остановить тест" : L"Начать тест");
+    if (gRecord) {
+        SetWindowTextW(gRecord, gRecorder && gRecorder->running() ? L"Остановить запись видео" : L"Начать запись видео");
+        EnableWindow(gRecord, gRunning);
+        InvalidateRect(gRecord, nullptr, TRUE);
+    }
+    if (gVideoStatus) {
+        const wchar_t* label = L"Видео: выключено";
+        if (gRecording.state() == RecordingState::Starting) label = L"Видео: запуск";
+        if (gRecording.state() == RecordingState::Recording) label = L"Видео: запись";
+        if (gRecording.state() == RecordingState::Lost) label = L"Видео: ошибка";
+        if (gRecording.state() == RecordingState::Stopped) label = L"Видео: остановлено";
+        SetWindowTextW(gVideoStatus, label);
+    }
     EnableWindow(gPreset, gRunning ? FALSE : TRUE);
+    if (gGizmo) EnableWindow(gGizmo, !gRunning);
     EnableWindow(gOpenSession, !gRunning && !gLastSessionPath.empty());
     EnableWindow(gCopyReport, !gRunning && !gLastReportPath.empty());
     InvalidateRect(gToggle, nullptr, TRUE);
@@ -312,12 +341,12 @@ void startSession() {
     const auto preflight = runToolPreflight(
         presentMonExe,
         ffmpegExe,
-        runtimeRoot / L"runtime-tools.sha256");
+        runtimeRoot / L"runtime-tools.sha256",
+        false);
 
     if (!preflight.hashManifestTrusted ||
         !preflight.presentMonFound ||
-        !preflight.presentMonTrusted ||
-        !preflight.recordingReady()) {
+        !preflight.presentMonTrusted) {
         const std::wstring message =
             L"Предварительная проверка не пройдена:\n\n" +
             preflight.details +
@@ -360,6 +389,8 @@ void startSession() {
     gSessionStartedWallClock = std::chrono::system_clock::now();
     gRecorderStartObserved = false;
     gRecorderTimelineContinuous = false;
+    gRecording = RecordingTimeline{};
+    gAudioCaptured = false;
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
@@ -373,7 +404,9 @@ void startSession() {
     logEvent(L"Сессия создана  •  " + presetName);
     logEvent(L"Bodycam PID  •  " + std::to_wstring(bodycam.pid));
 
-    gEnvironmentCapabilities = probeEnvironmentCapabilities(bodycam.pid);
+    gGizmoMode = SendMessageW(gGizmo, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    const auto collection = CollectionPolicy::forGizmo(gGizmoMode);
+    gEnvironmentCapabilities = probeEnvironmentCapabilities(bodycam.pid, collection.windowsEvents);
     if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, gSession->sessionPath() / L"environment_capabilities.json"))
         logEvent(L"Cannot save environment capabilities profile");
 
@@ -428,29 +461,10 @@ void startSession() {
         logEvent(L"PresentMon недоступен  •  " + pmError);
     }
 
-    gRecorder = std::make_unique<RecorderController>(
-        ffmpegExe);
-
-    std::wstring recorderError;
-    const bool recorderStarted =
-        gRecorder->start(
-            gSession->sessionPath() / L"video",
-            &recorderError);
-
-    if (recorderStarted) {
-        gRecorderStartedWallClock = std::chrono::system_clock::now();
-        gRecorderStartObserved = true;
-        gRecorderTimelineContinuous = true;
-        gEnvironmentCapabilities.sources.push_back({"nvenc_video", "started", 0, false, "Startup succeeded; completeness validated separately"});
-        logEvent(L"NVENC video  •  ON");
-    } else {
-        gEnvironmentCapabilities.sources.push_back({"nvenc_video", "unavailable", 0, false, "See session.log for startup error; no Win32 code supplied by controller"});
-        logEvent(L"NVENC video недоступно  •  " + recorderError);
-    }
+    gEnvironmentCapabilities.sources.push_back({"nvenc_video", "disabled", 0, true, "Video recording is off until explicitly enabled"});
 
     if (!requiredCaptureSourcesReady(
             presentMonStarted,
-            recorderStarted,
             mirrorConfigured,
             mirrorStarted)) {
 
@@ -471,16 +485,6 @@ void startSession() {
                     : pmError;
         }
 
-        if (!recorderStarted) {
-            if (!failure.empty())
-                failure += L"\n";
-            failure += L"NVENC video: ";
-            failure +=
-                recorderError.empty()
-                    ? L"startup failed"
-                    : recorderError;
-        }
-
         if (mirrorConfigured && !mirrorStarted) {
             if (!failure.empty())
                 failure += L"\n";
@@ -495,18 +499,7 @@ void startSession() {
         return;
     }
 
-    gAudio = std::make_unique<AudioLoopbackRecorder>();
-    std::wstring audioError;
-    if (gAudio->start(
-            gSession->sessionPath() / L"game_audio.wav",
-            &audioError)) {
-        gEnvironmentCapabilities.sources.push_back({"wasapi_audio", "started", 0, true, "Startup succeeded; completeness validated separately"});
-        logEvent(L"Game audio  •  ON");
-    } else {
-        gEnvironmentCapabilities.sources.push_back({"wasapi_audio", "unavailable", 0, true, "See session.log for startup error; no Win32 code supplied by controller"});
-        logEvent(L"Game audio недоступен  •  " + audioError);
-        gAudio.reset();
-    }
+    gEnvironmentCapabilities.sources.push_back({"wasapi_audio", "disabled", 0, true, "Audio starts with optional video recording"});
 
     if (!saveEnvironmentCapabilities(gEnvironmentCapabilities, gSession->sessionPath() / L"environment_capabilities.json"))
         logEvent(L"Cannot save environment capabilities profile");
@@ -515,19 +508,21 @@ void startSession() {
     updateControlsForRunningState();
 
     std::wstring fullscreenHudError;
-    gFullscreenHudActive =
+    gFullscreenHudActive = collection.fullscreenHelper &&
         gFullscreenOverlay.ensureHelperRunning(&fullscreenHudError);
 
     if (gFullscreenHudActive) {
         gOverlay.hide();
         logEvent(L"Fullscreen HUD  •  ON");
     } else {
-        gOverlay.showForProcess(bodycam.pid);
-        logEvent(
-            L"Fullscreen HUD недоступен  •  " +
-            fullscreenHudError);
-        logEvent(
-            L"Fallback HUD  •  работает в окне/Borderless");
+        if (collection.fullscreenHelper) {
+            gOverlay.showForProcess(bodycam.pid);
+            logEvent(L"Fullscreen HUD недоступен  •  " + fullscreenHudError);
+            logEvent(L"Fallback HUD  •  работает в окне/Borderless");
+        } else {
+            gEnvironmentCapabilities.sources.push_back({"fullscreen_helper", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"});
+            logEvent(L"Режим Gizmo  •  полноэкранный помощник выключен");
+        }
     }
 
     setStatus(L"Тест идёт  •  F9 для остановки");
@@ -561,16 +556,16 @@ void stopSession() {
 
     if (gRecorder) {
         gRecorder->stop();
+        gRecording.stop(std::chrono::steady_clock::now());
         logEvent(L"NVENC video  •  OFF");
         gRecorder.reset();
     }
 
-    bool includeAudioInFinalVideo = false;
+    bool includeAudioInFinalVideo = gAudioCaptured;
 
     if (gAudio) {
         std::wstring audioStopError;
-        includeAudioInFinalVideo =
-            gAudio->stop(&audioStopError);
+        includeAudioInFinalVideo = gAudio->stop(&audioStopError) || includeAudioInFinalVideo;
 
         if (includeAudioInFinalVideo) {
             logEvent(L"Game audio  •  OFF");
@@ -614,6 +609,26 @@ void stopSession() {
     }
 
     const auto sessionPath = gSession->sessionPath();
+    {
+        std::ofstream intervals(sessionPath / L"recording_intervals.json", std::ios::binary);
+        intervals << "{\"state\":\"";
+        switch (gRecording.state()) {
+        case RecordingState::Disabled: intervals << "disabled"; break;
+        case RecordingState::Starting: intervals << "starting"; break;
+        case RecordingState::Recording: intervals << "recording"; break;
+        case RecordingState::Lost: intervals << "lost"; break;
+        case RecordingState::Stopped: intervals << "stopped"; break;
+        }
+        intervals << "\",\"requested_seconds\":" << gRecording.requestedSeconds() << ",\"intervals\":[";
+        bool first = true;
+        for (const auto& interval : gRecording.intervals()) {
+            if (!first) intervals << ',';
+            first = false;
+            intervals << "{\"start_seconds\":" << std::chrono::duration<double>(interval.start - gSessionStartedAt).count()
+                      << ",\"end_seconds\":" << std::chrono::duration<double>(interval.end - gSessionStartedAt).count() << '}';
+        }
+        intervals << "]}\n";
+    }
     const double sessionDurationSeconds =
         std::chrono::duration<double>(
             std::chrono::steady_clock::now() - gSessionStartedAt).count();
@@ -621,7 +636,7 @@ void stopSession() {
     const auto runtimeManifest =
         appDir() / L"runtime-tools.sha256";
     const bool ffmpegTrustedForFinalization =
-        runtimeToolTrusted(
+        !gRecording.intervals().empty() && runtimeToolTrusted(
             gRuntimeFfmpegExe,
             runtimeManifest);
 
@@ -638,14 +653,16 @@ void stopSession() {
     });
 
     std::wstring muxError;
-    if (!ffmpegTrustedForFinalization) {
+    if (gRecording.intervals().empty()) {
+        logEvent(L"Видео выключено  •  обработка не требуется");
+    } else if (!ffmpegTrustedForFinalization) {
         logEvent(
             L"Финализация видео заблокирована  •  "
             L"FFmpeg trust revalidation failed; raw capture preserved");
     } else if (finalizeSessionVideo(
             gRuntimeFfmpegExe,
             sessionPath,
-            includeAudioInFinalVideo,
+            includeAudioInFinalVideo && gRecording.intervals().size() == 1,
             &muxError)) {
         std::error_code finalVideoEc;
         if (std::filesystem::is_regular_file(
@@ -732,7 +749,7 @@ void stopSession() {
         logEvent(L"Ошибка performance health report  •  " + performanceHealthError);
     }
 
-    if (gGameExitedUnexpectedly) {
+    if (gGameExitedUnexpectedly && !gGizmoMode) {
         const auto crashData = collectRecentBodycamCrashData(
             sessionPath,
             gSessionStartedWallClock);
@@ -744,7 +761,7 @@ void stopSession() {
     }
 
     const bool ffmpegTrustedForProbe =
-        runtimeToolTrusted(
+        !gRecording.intervals().empty() && runtimeToolTrusted(
             gRuntimeFfmpegExe,
             runtimeManifest);
 
@@ -765,7 +782,8 @@ void stopSession() {
         summary,
         sessionDurationSeconds,
         gGameExitedUnexpectedly,
-        ffmpegTrustedForProbe);
+        ffmpegTrustedForProbe,
+        gRecording.requestedSeconds());
 
     std::wstring validationError;
     if (writeTestValidationReport(
@@ -791,12 +809,23 @@ void stopSession() {
     const DWORD localAppDataSize = GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, static_cast<DWORD>(std::size(localAppData)));
     const std::filesystem::path bodycamLogRoot = localAppDataSize > 0 && localAppDataSize < std::size(localAppData)
         ? std::filesystem::path(localAppData) / L"Bodycam" / L"Saved" / L"Logs" : std::filesystem::path{};
-    const auto bodycamLogs = collectBodycamLogs(bodycamLogRoot, sessionPath, gSessionStartedWallClock);
+    BodycamLogCollection bodycamLogs;
+    if (gGizmoMode) {
+        bodycamLogs.source = {"bodycam_unreal_logs", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"};
+    } else {
+        bodycamLogs = collectBodycamLogs(bodycamLogRoot, sessionPath, gSessionStartedWallClock);
+    }
     const bool bodycamManifestWritten = writeBodycamLogsManifest(bodycamLogs, sessionPath / L"bodycam_logs_manifest.json");
     gEnvironmentCapabilities.sources.push_back(bodycamLogs.source);
     logEvent(bodycamManifestWritten ? L"Optional Bodycam log manifest saved" : L"Cannot save optional Bodycam log manifest");
 
-    const auto windowsEvents = collectWindowsEvents(gSessionStartedWallClock, observationEnd);
+    EventLogCollection windowsEvents;
+    if (!gGizmoMode) {
+        windowsEvents = collectWindowsEvents(gSessionStartedWallClock, observationEnd);
+    } else {
+        windowsEvents.channels.push_back({"event_log_System", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"});
+        windowsEvents.channels.push_back({"event_log_Application", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"});
+    }
     const bool eventReportWritten = writeWindowsEventReport(
         windowsEvents, stutterCorrelation, gPresentMonStartedWallClock,
         gSessionStartedWallClock, observationEnd, clockStable, gGameExitedUnexpectedly,
@@ -837,13 +866,15 @@ void stopSession() {
         performanceHealth,
         stutterCorrelation);
 
-    if (!bodycamManifestWritten || (bodycamLogs.source.status != "available" && bodycamLogs.source.status != "available_empty"))
+    if (!gGizmoMode && (!bodycamManifestWritten || (bodycamLogs.source.status != "available" && bodycamLogs.source.status != "available_empty")))
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Bodycam logs: " + std::wstring(bodycamLogs.source.status.begin(), bodycamLogs.source.status.end()) + (bodycamManifestWritten ? L"" : L"; manifest write failed"));
+    if (gGizmoMode)
+        sessionDiagnostics.diagnosticLimitations.push_back(L"Режим Gizmo: Windows Event Log, логи Bodycam и полноэкранный помощник выключены");
     if (stutterCorrelation.videoBookmarkAlignmentAvailable)
         sessionDiagnostics.diagnosticLimitations.push_back(L"Video stutter bookmarks are navigation estimates; PresentMon first-frame and FFmpeg startup latency are not measured directly");
     else
         sessionDiagnostics.diagnosticLimitations.push_back(L"Video stutter bookmarks unavailable because stable clock and uninterrupted recorder timeline were not both confirmed");
-    sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
+    if (!gGizmoMode) sessionDiagnostics.diagnosticLimitations.push_back(L"Windows Event Log temporal matches are approximate and do not prove causation; see windows_events.json");
     if (infrastructureEvidence.instabilityObserved)
         sessionDiagnostics.diagnosticLimitations.push_back(L"External network/storage-path instability evidence observed; performance comparison may be contaminated; see infrastructure_evidence.txt");
     if (!infrastructureEvidenceWritten)
@@ -851,7 +882,7 @@ void stopSession() {
     if (!eventReportWritten)
         sessionDiagnostics.diagnosticLimitations.push_back(L"Optional Windows Event Log report could not be written");
     for (const auto& channel : windowsEvents.channels) {
-        if (channel.status != "available" && channel.status != "available_empty")
+        if (channel.status != "available" && channel.status != "available_empty" && channel.status != "disabled_by_gizmo_mode")
             sessionDiagnostics.diagnosticLimitations.push_back(std::wstring(channel.source.begin(), channel.source.end()) + L": " + std::wstring(channel.status.begin(), channel.status.end()));
     }
     if (!clockStable)
@@ -918,6 +949,59 @@ void stopSession() {
 void toggleSession() {
     if (gRunning) stopSession();
     else startSession();
+}
+
+void toggleRecording() {
+    if (!gRunning || !gSession) return;
+    if (gRecorder) {
+        gRecorder->stop();
+        gRecorder.reset();
+        gRecording.stop(std::chrono::steady_clock::now());
+        gRecorderTimelineContinuous = false;
+        if (gAudio) {
+            std::wstring audioError;
+            gAudioCaptured = gAudio->stop(&audioError);
+            gAudio.reset();
+            if (!gAudioCaptured) logEvent(L"Игровой звук недоступен  •  " + audioError);
+        }
+        logEvent(L"Видео: запись остановлена");
+        updateControlsForRunningState();
+        return;
+    }
+    gRecording.starting();
+    updateControlsForRunningState();
+    const auto videoPreflight = runToolPreflight(
+        resolveRuntimeTool(appDir(), L"PresentMon.exe"),
+        gRuntimeFfmpegExe,
+        appDir() / L"runtime-tools.sha256");
+    if (!videoPreflight.recordingReady()) {
+        gRecording.lost(std::chrono::steady_clock::now());
+        logEvent(L"Видео: FFmpeg/NVENC/DDAGrab не готовы  •  " + videoPreflight.details);
+        updateControlsForRunningState();
+        return;
+    }
+    gRecorder = std::make_unique<RecorderController>(gRuntimeFfmpegExe);
+    std::wstring error;
+    if (!gRecorder->start(gSession->sessionPath() / L"video", &error)) {
+        gRecorder.reset();
+        gRecording.lost(std::chrono::steady_clock::now());
+        logEvent(L"Видео: не удалось начать запись  •  " + error);
+    } else {
+        gRecording.start(std::chrono::steady_clock::now());
+        gRecorderStartedWallClock = std::chrono::system_clock::now();
+        gRecorderStartObserved = true;
+        gRecorderTimelineContinuous = gRecording.intervals().size() == 1;
+        logEvent(L"Видео: запись началась");
+        gAudio = std::make_unique<AudioLoopbackRecorder>();
+        std::wstring audioError;
+        if (!gAudio->start(gSession->sessionPath() / L"game_audio.wav", &audioError)) {
+            gAudio.reset();
+            logEvent(L"Игровой звук недоступен  •  " + audioError);
+        } else {
+            logEvent(L"Игровой звук: запись началась");
+        }
+    }
+    updateControlsForRunningState();
 }
 
 void openLastSession(HWND owner) {
@@ -1016,7 +1100,7 @@ void paintMainWindow(HWND hwnd) {
     auto oldPen = SelectObject(dc, border);
 
     RoundRect(dc, 20, 105, 600, 147, 10, 10);
-    RoundRect(dc, 20, 224, 600, 326, 10, 10);
+    RoundRect(dc, 20, 304, 600, 406, 10, 10);
 
     SelectObject(dc, oldPen);
     SelectObject(dc, oldBrush);
@@ -1030,7 +1114,7 @@ void paintMainWindow(HWND hwnd) {
 
     SelectObject(dc, gSmallFont);
     SetTextColor(dc, COLOR_MUTED);
-    RECT logLabel{20, 202, 600, 220};
+    RECT logLabel{20, 282, 600, 300};
     DrawTextW(dc, L"ЖУРНАЛ", -1, &logLabel,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
@@ -1184,11 +1268,34 @@ void createControls(HWND hwnd) {
         400, 159, 200, 38,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_COPY_REPORT)), nullptr, nullptr);
 
+    gRecord = CreateWindowW(
+        L"BUTTON", L"Начать запись видео",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        20, 205, 250, 38,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RECORD)), nullptr, nullptr);
+    gVideoStatus = CreateWindowW(
+        L"STATIC", L"Видео: выключено",
+        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
+        286, 205, 300, 38,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VIDEO_STATUS)), nullptr, nullptr);
+    SendMessageW(gVideoStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+    EnableWindow(gRecord, FALSE);
+
+    gGizmo = CreateWindowW(L"BUTTON", L"Режим совместимости с Gizmo",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        20, 252, 350, 26,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_GIZMO)), nullptr, nullptr);
+    SendMessageW(gGizmo, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+    gHelp = CreateWindowW(L"BUTTON", L"Справка",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        460, 249, 140, 31,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_HELP)), nullptr, nullptr);
+
     gLog = CreateWindowExW(
         0, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-        32, 234, 556, 82,
+        32, 314, 556, 82,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), nullptr, nullptr);
 
     SendMessageW(gLog, WM_SETFONT, reinterpret_cast<WPARAM>(gSmallFont), TRUE);
@@ -1293,23 +1400,25 @@ void updateLiveOverlay() {
         }
 
         if (!recorderHealthy) {
-            if (recorderEvent.empty()) {
-                logEvent(
-                    L"Обязательный источник потерян  •  "
-                    L"NVENC video unavailable");
-            }
+            if (recorderEvent.empty()) logEvent(L"Видео: захват потерян");
 
             gRecorderTimelineContinuous = false;
             gEnvironmentCapabilities.sources.push_back({
                 "nvenc_video_runtime",
                 "failed_during_capture",
                 0,
-                false,
-                "Mandatory FFmpeg recorder could not continue capture"
+                true,
+                "Optional FFmpeg recorder stopped; diagnostic capture continues"
             });
-
-            stopSession();
-            return;
+            gRecording.lost(std::chrono::steady_clock::now());
+            gRecorder->stop();
+            gRecorder.reset();
+            if (gAudio) {
+                std::wstring audioError;
+                gAudioCaptured = gAudio->stop(&audioError);
+                gAudio.reset();
+            }
+            updateControlsForRunningState();
         }
     }
 
@@ -1342,6 +1451,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             reinterpret_cast<LPCREATESTRUCTW>(lp)->hInstance);
 
         RegisterHotKey(hwnd, HOTKEY_TOGGLE, MOD_NOREPEAT, VK_F9);
+        RegisterHotKey(hwnd, HOTKEY_RECORD, MOD_NOREPEAT, VK_F8);
         SetTimer(hwnd, ID_TIMER, 500, nullptr);
 
         appendUiLog(L"Приложение готово");
@@ -1378,7 +1488,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HWND control = reinterpret_cast<HWND>(lp);
 
         SetBkMode(dc, OPAQUE);
-        if (control == gStatus) {
+        if (control == gStatus || control == gVideoStatus) {
             SetTextColor(dc, COLOR_TEXT);
             SetBkColor(dc, COLOR_PANEL);
             return reinterpret_cast<INT_PTR>(gPanelBrush);
@@ -1409,6 +1519,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             toggleSession();
             return 0;
 
+        case ID_RECORD:
+            toggleRecording();
+            return 0;
+
+        case ID_HELP: {
+            const auto help = appDir() / L"СПРАВКА.txt";
+            if (reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd, L"open", help.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
+                MessageBoxW(hwnd, (L"Не удалось открыть справку:\n" + help.wstring()).c_str(), L"Справка", MB_ICONWARNING);
+            return 0;
+        }
+
         case ID_OPEN_SESSION:
             openLastSession(hwnd);
             return 0;
@@ -1437,6 +1558,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
 
     case WM_HOTKEY:
+        if (wp == HOTKEY_RECORD) {
+            toggleRecording();
+            return 0;
+        }
         if (wp == HOTKEY_TOGGLE) {
             if (gSession)
                 gSession->log(L"Hotkey received: F9 toggle");
@@ -1448,6 +1573,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         KillTimer(hwnd, ID_TIMER);
         UnregisterHotKey(hwnd, HOTKEY_TOGGLE);
+        UnregisterHotKey(hwnd, HOTKEY_RECORD);
 
         if (gRunning)
             stopSession();
@@ -1505,7 +1631,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
         L"Bodycam Diagnostics",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        628, 382,
+        628, 462,
         nullptr, nullptr,
         hInstance, nullptr);
 
@@ -1523,4 +1649,3 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
 
     return static_cast<int>(msg.wParam);
 }
-

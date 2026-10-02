@@ -424,7 +424,7 @@ bool packageSessionReport(
     const std::filesystem::path& outputZip,
     std::wstring* error) {
 
-    static constexpr std::array<const wchar_t*, 22>
+    static constexpr std::array<const wchar_t*, 23>
         kReportFiles = {
             L"build_info.json",
             L"bodycam_logs_manifest.json",
@@ -434,6 +434,7 @@ bool packageSessionReport(
             L"infrastructure_evidence.txt",
             L"session.log",
             L"session.json",
+            L"recording_intervals.json",
             L"system.json",
             L"presentmon.csv",
             L"telemetry.csv",

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace {
@@ -231,7 +233,15 @@ bool RecorderController::maintain(std::wstring* event) {
     GetExitCodeProcess(process_, &exitCode);
     closeChildHandles();
 
-    constexpr unsigned kMaxRestarts = 6;
+    std::ifstream log(outputDirectory_ / L"video_capture.log", std::ios::binary);
+    const std::string logText((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    if (logText.find("887a0026") != std::string::npos || logText.find("0x887A0026") != std::string::npos) {
+        disabled_ = true;
+        if (event) *event = L"Захват экрана потерян: графическая или удалённая сессия была сброшена (0x887A0026)";
+        return false;
+    }
+
+    constexpr unsigned kMaxRestarts = 1;
     if (restartCount_ >= kMaxRestarts) {
         disabled_ = true;
         if (event) {

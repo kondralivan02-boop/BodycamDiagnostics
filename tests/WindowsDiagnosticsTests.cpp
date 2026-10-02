@@ -16,18 +16,19 @@ int main(int argc, char** argv) {
     std::ofstream(root / L"video_with_audio.mkv") << "fixture";
     MetricsSummary metrics; metrics.valid = true;
     // Duration <=1 avoids invoking FFmpeg; this case isolates the optional-source policy.
-    const auto valid = validateTestSession(root, metrics, 0.5, false, false);
+    const auto valid = validateTestSession(root, metrics, 0.5, false, false, 0.5);
     check(valid.valid, "missing optional telemetry must not invalidate capture");
     check(!valid.warnings.empty(), "missing telemetry must be reported");
-    check(!validateTestSession(root, metrics, 0.5, true, false).valid, "game exit still invalidates capture");
+    check(!validateTestSession(root, metrics, 0.5, true, false, 0.5).valid, "game exit still invalidates capture");
     metrics.valid = false;
-    check(!validateTestSession(root, metrics, 0.5, false, false).valid, "missing metrics still invalidates capture");
+    check(!validateTestSession(root, metrics, 0.5, false, false, 0.5).valid, "missing metrics still invalidates capture");
     metrics.valid = true;
     std::filesystem::remove(root / L"video_with_audio.mkv");
-    check(!validateTestSession(root, metrics, 0.5, false, false).valid, "missing video still invalidates capture");
+    check(validateTestSession(root, metrics, 0.5, false, false).valid, "video disabled must allow valid diagnostics");
+    check(!validateTestSession(root, metrics, 0.5, false, false, 0.4).valid, "requested video missing must invalidate capture");
 
     std::ofstream(root / L"video_without_audio.mkv") << "video-only fixture";
-    check(validateTestSession(root, metrics, 0.5, false, false).valid,
+    check(validateTestSession(root, metrics, 0.5, false, false, 0.5).valid,
           "video_without_audio.mkv must satisfy required final-video validation");
     std::filesystem::remove(root / L"video_without_audio.mkv");
 
@@ -49,7 +50,8 @@ int main(int argc, char** argv) {
             durationMetrics,
             10.0,
             false,
-            true);
+            true,
+            10.0);
     check(fallbackValidation.valid,
           "validator must accept root-level FFmpeg runtime fallback");
     check(fallbackValidation.videoDurationChecked,
@@ -61,7 +63,8 @@ int main(int argc, char** argv) {
             durationMetrics,
             10.0,
             false,
-            false);
+            false,
+            10.0);
     check(!untrustedProbe.valid,
           "untrusted FFmpeg must block duration-probe validation");
     check(!untrustedProbe.videoDurationChecked,

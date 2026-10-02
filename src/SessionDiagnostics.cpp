@@ -126,8 +126,6 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
         if (event.telemetryMatched)
             ++result.telemetryMatchedStutters;
 
-        if (event.frameTimeMs > result.maxFrameTimeMs)
-            result.maxFrameTimeMs = event.frameTimeMs;
 
         for (const auto& signal : event.signals)
             ++signalCounts[signal];
@@ -475,4 +473,3 @@ bool writeSessionDiagnosticsReport(
 
     return true;
 }
-

@@ -8,6 +8,7 @@ struct MetricsSummary {
     bool valid = false;
     std::string frameTimeColumn;
     std::size_t totalFrames = 0;
+    std::size_t captureGaps = 0;
     double durationSeconds = 0.0;
     double averageFps = 0.0;
     double averageFrameTimeMs = 0.0;

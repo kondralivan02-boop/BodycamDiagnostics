@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <exception>
+#include <iterator>
 #include <iomanip>
 #include <sstream>
 #include <string_view>
@@ -239,8 +240,14 @@ bool SessionManager::writeState(
         << "\",\n"
         << "  \"updated_at\": \""
         << jsonEscapeUtf8(timestamp(false))
-        << "\"\n"
-        << "}\n";
+        << "\"";
+    std::ifstream recording(sessionPath_ / L"recording_intervals.json", std::ios::binary);
+    if (recording) {
+        const std::string value((std::istreambuf_iterator<char>(recording)), std::istreambuf_iterator<char>());
+        if (!value.empty() && value.front() == '{')
+            out << ",\n  \"recording\": " << value;
+    }
+    out << "\n}\n";
 
     if (!out) {
         if (error)

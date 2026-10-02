@@ -30,9 +30,11 @@ add_executable(BodycamDiagnostics WIN32
     src/SystemSnapshot.cpp
     src/PresentMonController.cpp
     src/RecorderController.cpp
+    src/RecordingTimeline.cpp
     src/ToolPreflight.cpp
     src/TelemetrySampler.cpp
     src/MetricsCalculator.cpp
+    src/FrameContinuity.cpp
     src/ReportPackager.cpp
     src/SessionMirror.cpp
     src/AudioLoopbackRecorder.cpp
@@ -135,10 +137,23 @@ if(BUILD_TESTING)
     add_executable(CaptureStartupPolicyTests tests/CaptureStartupPolicyTests.cpp src/CaptureStartupPolicy.cpp)
     target_include_directories(CaptureStartupPolicyTests PRIVATE src)
     add_test(NAME CaptureStartupPolicyTests COMMAND CaptureStartupPolicyTests)
+    add_executable(RecordingTimelineTests tests/RecordingTimelineTests.cpp src/RecordingTimeline.cpp)
+    target_include_directories(RecordingTimelineTests PRIVATE src)
+    add_test(NAME RecordingTimelineTests COMMAND RecordingTimelineTests)
+    add_executable(CollectionPolicyTests tests/CollectionPolicyTests.cpp)
+    target_include_directories(CollectionPolicyTests PRIVATE src)
+    add_test(NAME CollectionPolicyTests COMMAND CollectionPolicyTests)
     add_executable(SessionMirrorTests tests/SessionMirrorTests.cpp src/SessionMirror.cpp)
     target_include_directories(SessionMirrorTests PRIVATE src)
     add_test(NAME SessionMirrorTests COMMAND SessionMirrorTests)
-    add_executable(StutterIndicatorTests tests/StutterIndicatorTests.cpp src/StutterCorrelator.cpp)
+    add_executable(FrameContinuityTests tests/FrameContinuityTests.cpp src/FrameContinuity.cpp)
+    target_include_directories(FrameContinuityTests PRIVATE src)
+    add_test(NAME FrameContinuityTests COMMAND FrameContinuityTests)
+    add_executable(MetricsGapTests tests/MetricsGapTests.cpp src/MetricsCalculator.cpp src/FrameContinuity.cpp src/StutterCorrelator.cpp src/SessionDiagnostics.cpp)
+    target_include_directories(MetricsGapTests PRIVATE src)
+    target_compile_definitions(MetricsGapTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME MetricsGapTests COMMAND MetricsGapTests)
+    add_executable(StutterIndicatorTests tests/StutterIndicatorTests.cpp src/StutterCorrelator.cpp src/FrameContinuity.cpp)
     target_include_directories(StutterIndicatorTests PRIVATE src)
     target_compile_definitions(StutterIndicatorTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME StutterIndicatorTests COMMAND StutterIndicatorTests)
@@ -168,8 +183,12 @@ if(BUILD_TESTING)
         target_compile_options(AudioVideoMuxerTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(ReportPackagerTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(CaptureStartupPolicyTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(RecordingTimelineTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(CollectionPolicyTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(SessionMirrorTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(StutterIndicatorTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(FrameContinuityTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(MetricsGapTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(ValidatorFfmpegFixture PRIVATE /utf-8 /W4 /WX)
         target_compile_options(WindowsDiagnosticsTests PRIVATE /utf-8 /W4 /WX)
     endif()

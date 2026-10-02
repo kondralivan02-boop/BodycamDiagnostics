@@ -37,4 +37,5 @@ std::filesystem::path resolveRuntimeTool(
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
     const std::filesystem::path& ffmpegExe,
-    const std::filesystem::path& hashManifest);
+    const std::filesystem::path& hashManifest,
+    bool checkVideo = true);

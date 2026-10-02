@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-EnvironmentCapabilities probeEnvironmentCapabilities(std::uint32_t gamePid);
+EnvironmentCapabilities probeEnvironmentCapabilities(std::uint32_t gamePid, bool includeEventLogs = true);
 bool saveEnvironmentCapabilities(const EnvironmentCapabilities& profile, const std::filesystem::path& output);
 EventLogCollection collectWindowsEvents(std::chrono::system_clock::time_point start,
                                        std::chrono::system_clock::time_point end);

@@ -67,8 +67,8 @@ int wmain(int argc, wchar_t** argv) {
               "recorder must report terminal failure when restart fails");
         check(!controller.running(),
               "terminal recorder failure must leave recorder unavailable");
-        check(event.find(L"restart failed") != std::wstring::npos,
-              "terminal recorder failure must report restart failure");
+        check(event.find(L"Захват экрана потерян") != std::wstring::npos,
+              "desktop duplication loss must have a Russian explanation");
     }
 
     std::filesystem::remove_all(root, ec);

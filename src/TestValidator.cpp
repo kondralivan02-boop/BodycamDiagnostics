@@ -206,7 +206,8 @@ TestValidationResult validateTestSession(
     const MetricsSummary& summary,
     double expectedDurationSeconds,
     bool gameExitedUnexpectedly,
-    bool ffmpegTrustedForProbe) {
+    bool ffmpegTrustedForProbe,
+    double requestedVideoSeconds) {
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
@@ -236,7 +237,9 @@ TestValidationResult validateTestSession(
         finalVideoPath(sessionPath, videoHasAudio);
 
     ec.clear();
-    if (video.empty() ||
+    if (requestedVideoSeconds <= 0.0) {
+        result.warnings.push_back(L"Видео выключено пользователем; диагностический тест выполнен без записи");
+    } else if (video.empty() ||
         !std::filesystem::is_regular_file(video, ec) ||
         std::filesystem::file_size(video, ec) == 0) {
         result.issues.push_back(
@@ -247,7 +250,7 @@ TestValidationResult validateTestSession(
                 L"Final video has no WASAPI audio; video capture remains valid");
         }
 
-        if (expectedDurationSeconds > 1.0) {
+        if (requestedVideoSeconds > 1.0) {
             if (!ffmpegTrustedForProbe) {
                 result.issues.push_back(
                     L"Final video duration was not probed because FFmpeg trust revalidation failed");
@@ -262,7 +265,7 @@ TestValidationResult validateTestSession(
                 if (result.videoDurationChecked) {
                     result.videoCoverageRatio =
                         result.videoDurationSeconds /
-                        expectedDurationSeconds;
+                        requestedVideoSeconds;
 
                     if (result.videoCoverageRatio < 0.90) {
                         std::wstringstream ss;
@@ -375,4 +378,3 @@ bool writeTestValidationReport(
 
     return true;
 }
-

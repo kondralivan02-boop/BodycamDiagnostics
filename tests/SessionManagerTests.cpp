@@ -69,7 +69,12 @@ int main() {
     check(!std::filesystem::exists(tempPath),
           "logging must leave no temporary state file");
 
+    std::ofstream(session.sessionPath() / L"recording_intervals.json")
+        << "{\"state\":\"stopped\",\"intervals\":[{\"start_seconds\":1,\"end_seconds\":2}]}";
     session.stop();
+    const auto stoppedWithVideo = readAll(statePath);
+    check(stoppedWithVideo.find("\"recording\": {") != std::string::npos,
+          "session state must include recording intervals");
 
     const auto stopped = readAll(statePath);
     check(stopped.find("\"state\": \"stopped\"") != std::string::npos,
