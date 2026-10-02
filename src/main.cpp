@@ -659,7 +659,7 @@ void stopSession() {
                     finalVideoEc)) {
                 logEvent(
                     L"Видео без аудио  •  video_without_audio.mkv"
-                    L"  •  WASAPI был недоступен");
+                    L"  •  optional WASAPI audio недоступен или incomplete");
             } else {
                 logEvent(L"Видео финализировано");
             }
