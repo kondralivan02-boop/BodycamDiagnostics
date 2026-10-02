@@ -89,7 +89,6 @@ bool gFullscreenHudActive = false;
 
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
-std::filesystem::path gRuntimePresentMonExe;
 std::filesystem::path gRuntimeFfmpegExe;
 
 DWORD gGamePid = 0;
@@ -308,7 +307,6 @@ void startSession() {
     const auto ffmpegExe =
         resolveRuntimeTool(runtimeRoot, L"ffmpeg.exe");
 
-    gRuntimePresentMonExe = presentMonExe;
     gRuntimeFfmpegExe = ffmpegExe;
 
     const auto preflight = runToolPreflight(
