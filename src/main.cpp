@@ -17,6 +17,7 @@
 #include "CrashCollector.h"
 #include "CaptureStartupPolicy.h"
 #include "BodycamLogs.h"
+#include "BuildInfo.h"
 #include "EnvironmentDiagnostics.h"
 #include "DiagnosticsOverlay.h"
 #include "FullscreenOverlayBridge.h"
