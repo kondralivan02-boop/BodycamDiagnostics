@@ -69,6 +69,21 @@ bool SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
     const auto target = targetSession_ / relative;
 
     std::error_code ec;
+    const bool sourceExists =
+        std::filesystem::exists(source, ec);
+
+    if (ec) {
+        if (ec == std::errc::no_such_file_or_directory)
+            return true;
+
+        recordFailure(ec.value());
+        return false;
+    }
+
+    if (!sourceExists)
+        return true;
+
+    ec.clear();
     if (!std::filesystem::is_regular_file(source, ec)) {
         if (ec) {
             recordFailure(ec.value());
@@ -138,6 +153,21 @@ bool SessionMirror::syncOnce(bool finalPass) {
 
     const auto videoDir = sourceSession_ / L"video";
     std::error_code ec;
+    const bool videoDirExists =
+        std::filesystem::exists(videoDir, ec);
+
+    if (ec) {
+        if (ec == std::errc::no_such_file_or_directory)
+            return true;
+
+        recordFailure(ec.value());
+        return false;
+    }
+
+    if (!videoDirExists)
+        return true;
+
+    ec.clear();
     if (!std::filesystem::is_directory(videoDir, ec)) {
         if (ec) {
             recordFailure(ec.value());
