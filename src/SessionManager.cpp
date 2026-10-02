@@ -132,10 +132,14 @@ void SessionManager::writeState(const wchar_t* state) {
     out.flush();
     out.close();
 
-    std::error_code ec;
-    std::filesystem::remove(target, ec);
-    ec.clear();
-    std::filesystem::rename(temp, target, ec);
+    if (!MoveFileExW(
+            temp.c_str(),
+            target.c_str(),
+            MOVEFILE_REPLACE_EXISTING |
+                MOVEFILE_WRITE_THROUGH)) {
+        std::error_code cleanupEc;
+        std::filesystem::remove(temp, cleanupEc);
+    }
 }
 
 void SessionManager::log(const std::wstring& message) {

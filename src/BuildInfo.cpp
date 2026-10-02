@@ -1,6 +1,8 @@
 #include "BuildInfo.h"
 #include "BuildInfoGenerated.h"
 
+#include <Windows.h>
+
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -64,13 +66,20 @@ bool writeBuildInfoReport(
     }
     out.close();
 
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
-    ec.clear();
-    std::filesystem::rename(temporary, path, ec);
-    if (ec) {
-        if (error) *error = L"Cannot publish build_info.json: " + std::to_wstring(ec.value());
-        std::filesystem::remove(temporary, ec);
+    if (!MoveFileExW(
+            temporary.c_str(),
+            path.c_str(),
+            MOVEFILE_REPLACE_EXISTING |
+                MOVEFILE_WRITE_THROUGH)) {
+        const DWORD publishError = GetLastError();
+        if (error) {
+            *error =
+                L"Cannot publish build_info.json: " +
+                std::to_wstring(publishError);
+        }
+
+        std::error_code cleanupEc;
+        std::filesystem::remove(temporary, cleanupEc);
         return false;
     }
 
