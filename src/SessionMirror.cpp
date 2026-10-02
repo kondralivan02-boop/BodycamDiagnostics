@@ -1,4 +1,5 @@
 #include "SessionMirror.h"
+#include "AtomicOutputFile.h"
 
 #include <chrono>
 #include <system_error>
@@ -99,15 +100,12 @@ bool SessionMirror::copyRelativeFile(const std::filesystem::path& relative) {
         return false;
     }
 
-    ec.clear();
-    std::filesystem::copy_file(
-        source,
-        target,
-        std::filesystem::copy_options::overwrite_existing,
-        ec);
-
-    if (ec) {
-        recordFailure(ec.value());
+    std::wstring copyError;
+    if (!atomicCopyFile(
+            source,
+            target,
+            &copyError)) {
+        recordFailure(ERROR_WRITE_FAULT);
         return false;
     }
 
