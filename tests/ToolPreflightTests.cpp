@@ -32,6 +32,18 @@ int main() {
               "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
           "SHA-256 must be computed exactly for runtime tools");
 
+    const auto manifest = root / "runtime-tools.sha256";
+    {
+        std::ofstream out(manifest);
+        out << "# test manifest\n";
+        out << "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d  PresentMon.exe\n";
+    }
+    check(expectedRuntimeToolSha256(manifest, L"PresentMon.exe") ==
+              "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
+          "runtime tool hash must come from manifest");
+    check(expectedRuntimeToolSha256(manifest, L"ffmpeg.exe").empty(),
+          "missing manifest entry must not produce a trusted hash");
+
     const auto fakeFfmpeg = root / "ffmpeg.exe";
     std::ofstream(fakeFfmpeg) << "not-the-verified-ffmpeg";
     const auto preflight = runToolPreflight(preferred, fakeFfmpeg);
