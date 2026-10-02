@@ -642,14 +642,12 @@ void stopSession() {
 
     gEnvironmentCapabilities.sources.push_back({
         "ffmpeg_finalization_trust",
-        ffmpegTrustedForFinalization
-            ? "verified"
-            : "failed",
+        gRecording.intervals().empty() ? "skipped" : (ffmpegTrustedForFinalization ? "verified" : "failed"),
         0,
-        false,
-        ffmpegTrustedForFinalization
+        true,
+        gRecording.intervals().empty() ? "Video was disabled" : (ffmpegTrustedForFinalization
             ? "FFmpeg SHA-256 revalidated immediately before finalization"
-            : "FFmpeg or runtime manifest changed after startup; external finalization blocked"
+            : "FFmpeg or runtime manifest changed after startup; external finalization blocked")
     });
 
     std::wstring muxError;
@@ -767,14 +765,12 @@ void stopSession() {
 
     gEnvironmentCapabilities.sources.push_back({
         "ffmpeg_validation_trust",
-        ffmpegTrustedForProbe
-            ? "verified"
-            : "failed",
+        gRecording.intervals().empty() ? "skipped" : (ffmpegTrustedForProbe ? "verified" : "failed"),
         0,
-        false,
-        ffmpegTrustedForProbe
+        true,
+        gRecording.intervals().empty() ? "Video was disabled" : (ffmpegTrustedForProbe
             ? "FFmpeg SHA-256 revalidated immediately before duration probe"
-            : "FFmpeg or runtime manifest changed after finalization; duration probe blocked"
+            : "FFmpeg or runtime manifest changed after finalization; duration probe blocked")
     });
 
     const auto validation = validateTestSession(

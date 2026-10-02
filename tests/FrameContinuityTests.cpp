@@ -10,4 +10,5 @@ int main() {
     check(stream.accept("2026-10-02 10:00:42.617", 16.7, "Composed: Flip"));
     check(!stream.accept("2026-10-02 10:00:40.000", 16.7, "Composed: Flip"));
     check(stream.gapCount() == 2);
+    check(stream.gaps().front().end == "2026-10-02 10:00:42.600");
 }

@@ -211,6 +211,7 @@ TestValidationResult validateTestSession(
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
+    result.requestedVideoSeconds = requestedVideoSeconds;
 
     if (gameExitedUnexpectedly)
         result.issues.push_back(L"Bodycam exited or crashed during the test");
@@ -317,6 +318,7 @@ bool writeTestValidationReport(
          << r.presentMonCoverageRatio << ",\n"
          << "  \"video_duration_checked\": "
          << (r.videoDurationChecked ? "true" : "false") << ",\n"
+         << "  \"requested_video_seconds\": " << r.requestedVideoSeconds << ",\n"
          << "  \"video_duration_seconds\": "
          << r.videoDurationSeconds << ",\n"
          << "  \"video_coverage_ratio\": "
@@ -351,8 +353,8 @@ bool writeTestValidationReport(
          << (r.videoDurationChecked ? "yes" : "no") << "\n"
          << "Video duration: "
          << r.videoDurationSeconds << " s\n"
-         << "Video coverage: "
-         << r.videoCoverageRatio * 100.0 << "%\n";
+         << "Requested video: " << r.requestedVideoSeconds << " s\n"
+         << "Video coverage: " << r.videoCoverageRatio * 100.0 << "%\n";
 
     for (const auto& issue : r.issues)
         text << "- " << narrowAscii(issue) << "\n";

@@ -43,6 +43,11 @@ PerformanceHealthResult analyzePerformanceHealth(const MetricsSummary& summary) 
     result.maxFrameTimeMs = summary.maxFrameTimeMs;
     result.severeStalls = summary.stuttersOver250Ms;
 
+    if (summary.captureGaps > 0) {
+        result.clean = false;
+        result.findings.push_back(L"CAPTURE_GAP: потеря кадров PresentMon (" + std::to_wstring(summary.captureGaps) + L"); сравнение FPS ограничено");
+    }
+
     if (summary.maxFrameTimeMs >= 250.0) {
         result.clean = false;
         std::wstringstream ss;

@@ -23,8 +23,10 @@ int main() {
     const auto correlation = correlateStutterEvents(file, {}, 100.0, false, 0.0);
     check(correlation.valid && correlation.events.empty(), "gap must not correlate as stutter");
     TestValidationResult validation;
-    PerformanceHealthResult health;
+    const auto health = analyzePerformanceHealth(metrics);
+    check(!health.clean, "capture gap contaminates performance comparison");
     const auto diagnostics = analyzeSessionDiagnostics(metrics, validation, health, correlation);
     check(diagnostics.maxFrameTimeMs == metrics.maxFrameTimeMs, "reports must agree on max frame time");
+    check(diagnostics.captureGaps == 1, "session diagnostics must expose CAPTURE_GAP count");
     std::filesystem::remove(file);
 }

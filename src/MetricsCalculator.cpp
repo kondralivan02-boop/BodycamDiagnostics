@@ -245,6 +245,7 @@ MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
         frameTimes.push_back(frameTimeMs);
     }
     result.captureGaps = continuity.gapCount();
+    result.captureGapIntervals = continuity.gaps();
 
     if (frameTimes.size() < 2) {
         result.error = L"Not enough valid frame-time samples in presentmon.csv";
@@ -312,8 +313,14 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "  \"stutters_over_50ms\": " << s.stuttersOver50Ms << ",\n"
          << "  \"stutters_over_100ms\": " << s.stuttersOver100Ms << ",\n"
          << "  \"stutters_over_250ms\": " << s.stuttersOver250Ms << ",\n"
-         << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << "\n"
-         << "}\n";
+         << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << ",\n"
+         << "  \"capture_gap_intervals\": [";
+    for (std::size_t i = 0; i < s.captureGapIntervals.size(); ++i) {
+        if (i) json << ',';
+        json << "{\"type\":\"CAPTURE_GAP\",\"from\":\"" << jsonEscape(s.captureGapIntervals[i].start)
+             << "\",\"to\":\"" << jsonEscape(s.captureGapIntervals[i].end) << "\"}";
+    }
+    json << "]\n}\n";
     AtomicOutputFile textFile(textOutput);
     auto& text = textFile.stream();
     if (!textFile.isOpen()) {
