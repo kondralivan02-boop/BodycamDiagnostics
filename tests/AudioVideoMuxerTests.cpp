@@ -97,7 +97,9 @@ int wmain(int argc, wchar_t** argv) {
     check(std::filesystem::is_regular_file(root / L"video_without_audio.mkv"),
           "video-only finalization must create video_without_audio.mkv");
     check(!std::filesystem::exists(root / L"video_with_audio.mkv"),
-          "audio-labelled output must not be created when audio is missing");
+          "audio-labelled output must not be created when audio is excluded");
+    check(!std::filesystem::exists(root / L"game_audio.wav"),
+          "excluded partial audio must not remain as a normal WAV artifact");
     check(!std::filesystem::exists(root / L"video"),
           "raw video directory should be removed after video-only finalization");
     check(std::filesystem::is_regular_file(root / L"video_capture.log"),

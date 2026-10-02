@@ -201,13 +201,14 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
         }
     }
 
-    if (audioAvailable) {
-        ec.clear();
-        if (!std::filesystem::remove(audioFile, ec) && ec) {
-            if (!cleanupWarning.empty())
-                cleanupWarning += L"; ";
-            cleanupWarning += L"Could not remove game_audio.wav";
-        }
+    ec.clear();
+    if (!std::filesystem::remove(audioFile, ec) && ec) {
+        if (!cleanupWarning.empty())
+            cleanupWarning += L"; ";
+        cleanupWarning +=
+            audioAvailable
+                ? L"Could not remove game_audio.wav"
+                : L"Could not remove incomplete game_audio.wav";
     }
 
     ec.clear();
