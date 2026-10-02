@@ -24,6 +24,7 @@ add_executable(BodycamDiagnostics WIN32
     src/FullscreenOverlayBridge.cpp
     src/TestValidator.cpp
     src/CrashCollector.cpp
+    src/CaptureStartupPolicy.cpp
     src/PerformanceHealth.cpp
     src/StutterCorrelator.cpp
     src/BodycamLogs.cpp
@@ -93,6 +94,9 @@ if(BUILD_TESTING)
     target_include_directories(ReportPackagerTests PRIVATE src)
     target_compile_definitions(ReportPackagerTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME ReportPackagerTests COMMAND ReportPackagerTests $<TARGET_FILE:PresentMonExitFixture>)
+    add_executable(CaptureStartupPolicyTests tests/CaptureStartupPolicyTests.cpp src/CaptureStartupPolicy.cpp)
+    target_include_directories(CaptureStartupPolicyTests PRIVATE src)
+    add_test(NAME CaptureStartupPolicyTests COMMAND CaptureStartupPolicyTests)
     add_executable(StutterIndicatorTests tests/StutterIndicatorTests.cpp src/StutterCorrelator.cpp)
     target_include_directories(StutterIndicatorTests PRIVATE src)
     target_compile_definitions(StutterIndicatorTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -113,6 +117,7 @@ if(BUILD_TESTING)
         target_compile_options(AudioVideoMuxerFixture PRIVATE /utf-8 /W4 /WX)
         target_compile_options(AudioVideoMuxerTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(ReportPackagerTests PRIVATE /utf-8 /W4 /WX)
+        target_compile_options(CaptureStartupPolicyTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(StutterIndicatorTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(WindowsDiagnosticsTests PRIVATE /utf-8 /W4 /WX)
     endif()
