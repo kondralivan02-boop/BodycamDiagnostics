@@ -113,6 +113,8 @@ bool SessionMirror::syncOnce(bool finalPass) {
         L"telemetry.csv",
         L"video\\video_capture.log",
         L"video_capture.log",
+        L"video_with_audio.mkv",
+        L"video_without_audio.mkv",
         L"summary.json",
         L"summary.txt",
         L"report_bundle.zip"
