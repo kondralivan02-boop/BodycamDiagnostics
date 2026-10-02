@@ -565,12 +565,14 @@ void stopSession() {
         gRecorder.reset();
     }
 
+    bool includeAudioInFinalVideo = false;
+
     if (gAudio) {
         std::wstring audioStopError;
-        const bool audioOk =
+        includeAudioInFinalVideo =
             gAudio->stop(&audioStopError);
 
-        if (audioOk) {
+        if (includeAudioInFinalVideo) {
             logEvent(L"Game audio  •  OFF");
         } else {
             logEvent(
@@ -584,7 +586,7 @@ void stopSession() {
                 "failed_on_stop",
                 0,
                 true,
-                "Optional WASAPI loopback did not finalize cleanly; WAV discarded"
+                "Optional WASAPI loopback did not finalize cleanly; final video excludes audio"
             });
 
             std::error_code audioEc;
@@ -617,9 +619,10 @@ void stopSession() {
             std::chrono::steady_clock::now() - gSessionStartedAt).count();
 
     std::wstring muxError;
-    if (muxSessionVideoWithAudio(
+    if (finalizeSessionVideo(
             gRuntimeFfmpegExe,
             sessionPath,
+            includeAudioInFinalVideo,
             &muxError)) {
         std::error_code finalVideoEc;
         if (std::filesystem::is_regular_file(

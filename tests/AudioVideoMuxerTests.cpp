@@ -46,7 +46,11 @@ int wmain(int argc, wchar_t** argv) {
 
     std::wstring error;
     const bool ok =
-        muxSessionVideoWithAudio(fixture, root, &error);
+        finalizeSessionVideo(
+            fixture,
+            root,
+            true,
+            &error);
 
     check(ok, "fake mux should complete successfully");
     check(std::filesystem::is_regular_file(root / L"video_with_audio.mkv"),
@@ -76,11 +80,17 @@ int wmain(int argc, wchar_t** argv) {
             << "raw video without audio";
         std::ofstream(root / L"video" / L"video_capture.log", std::ios::binary)
             << "ffmpeg warning evidence without audio";
+        std::ofstream(root / L"game_audio.wav", std::ios::binary)
+            << "stale partial audio that must be ignored";
     }
 
     error.clear();
     const bool videoOnlyOk =
-        muxSessionVideoWithAudio(fixture, root, &error);
+        finalizeSessionVideo(
+            fixture,
+            root,
+            false,
+            &error);
 
     check(videoOnlyOk,
           "video finalization must succeed when optional WASAPI audio is missing");

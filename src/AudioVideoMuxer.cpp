@@ -80,6 +80,7 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
     const auto audioFile = sessionDirectory / L"game_audio.wav";
     ec.clear();
     const bool audioAvailable =
+        includeAudio &&
         std::filesystem::is_regular_file(audioFile, ec);
 
     const auto videoDir = sessionDirectory / L"video";

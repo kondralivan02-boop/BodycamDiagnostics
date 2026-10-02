@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <string>
 
-bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
-                              const std::filesystem::path& sessionDirectory,
-                              std::wstring* error = nullptr);
+bool finalizeSessionVideo(
+    const std::filesystem::path& ffmpegExe,
+    const std::filesystem::path& sessionDirectory,
+    bool includeAudio,
+    std::wstring* error = nullptr);
