@@ -331,12 +331,24 @@ void startSession() {
         return;
     }
 
-    gSession = std::make_unique<SessionManager>(appDir() / L"Sessions");
-    if (!gSession->start(presetName)) {
+    gSession =
+        std::make_unique<SessionManager>(
+            appDir() / L"Sessions");
+
+    std::wstring sessionStartError;
+    if (!gSession->start(
+            presetName,
+            &sessionStartError)) {
+        const std::wstring message =
+            L"Не удалось создать диагностическую сессию:\n\n" +
+            (sessionStartError.empty()
+                ? std::wstring(L"Unknown session initialization failure")
+                : sessionStartError);
+
         MessageBoxW(
             gMain,
-            L"Не удалось создать папку сессии.",
-            L"Bodycam Diagnostics",
+            message.c_str(),
+            L"Bodycam Diagnostics — Session",
             MB_ICONERROR);
         gSession.reset();
         return;

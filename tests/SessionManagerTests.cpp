@@ -30,8 +30,11 @@ int main() {
     std::filesystem::remove_all(root, ec);
 
     SessionManager session(root);
-    check(session.start(L"Atomic State Test"),
+    std::wstring startError;
+    check(session.start(L"Atomic State Test", &startError),
           "session must start");
+    check(startError.empty(),
+          "successful session start must not report an error");
 
     const auto buildInfoPath =
         session.sessionPath() / L"build_info.json";
@@ -73,6 +76,19 @@ int main() {
           "stopped state must replace running state");
     check(!std::filesystem::exists(tempPath),
           "stopped publication must leave no temporary state file");
+
+    const auto blocker = root / L"blocked-root";
+    {
+        std::ofstream(blocker, std::ios::binary | std::ios::trunc)
+            << "not a directory";
+    }
+
+    SessionManager blocked(blocker / L"Sessions");
+    std::wstring blockedError;
+    check(!blocked.start(L"Blocked", &blockedError),
+          "blocked session root must fail");
+    check(!blockedError.empty(),
+          "session initialization failure must explain its cause");
 
     std::filesystem::remove_all(root, ec);
     std::cout << "Session manager tests passed\n";

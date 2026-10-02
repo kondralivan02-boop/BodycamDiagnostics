@@ -1,4 +1,5 @@
 #include "SessionManager.h"
+#include "AtomicOutputFile.h"
 #include "BuildInfo.h"
 #include <Windows.h>
 
@@ -82,33 +83,106 @@ std::wstring SessionManager::sanitizeForFileName(std::wstring value) {
     return value;
 }
 
-bool SessionManager::start(const std::wstring& presetName) {
+bool SessionManager::start(
+    const std::wstring& presetName,
+    std::wstring* error) {
+
     try {
-        if (running_) stop();
+        if (running_)
+            stop();
 
-        presetName_ = presetName.empty() ? L"Unnamed" : presetName;
-        std::filesystem::create_directories(root_);
-        sessionPath_ = root_ / (timestamp(true) + L"_" + sanitizeForFileName(presetName_));
-        std::filesystem::create_directories(sessionPath_);
+        presetName_ =
+            presetName.empty() ? L"Unnamed" : presetName;
 
-        logFile_.open(sessionPath_ / L"session.log",
-                      std::ios::binary | std::ios::out | std::ios::app);
-        if (!logFile_) return false;
+        std::error_code ec;
+        std::filesystem::create_directories(root_, ec);
+        if (ec) {
+            if (error) {
+                *error =
+                    L"Cannot create Sessions directory: " +
+                    std::to_wstring(ec.value());
+            }
+            return false;
+        }
+
+        sessionPath_ =
+            root_ /
+            (timestamp(true) + L"_" +
+             sanitizeForFileName(presetName_));
+
+        ec.clear();
+        std::filesystem::create_directories(sessionPath_, ec);
+        if (ec) {
+            if (error) {
+                *error =
+                    L"Cannot create session directory: " +
+                    std::to_wstring(ec.value());
+            }
+            return false;
+        }
+
+        logFile_.open(
+            sessionPath_ / L"session.log",
+            std::ios::binary |
+                std::ios::out |
+                std::ios::app);
+
+        if (!logFile_) {
+            if (error)
+                *error = L"Cannot open session.log";
+            return false;
+        }
 
         std::wstring buildInfoError;
         if (!writeBuildInfoReport(
                 sessionPath_ / L"build_info.json",
                 &buildInfoError)) {
+            if (error) {
+                *error =
+                    L"Cannot publish build provenance: " +
+                    buildInfoError;
+            }
             logFile_.close();
             return false;
         }
 
         running_ = true;
-        writeState(L"running");
+
+        std::wstring stateError;
+        if (!writeState(L"running", &stateError)) {
+            running_ = false;
+            if (error) {
+                *error =
+                    L"Cannot publish initial session state: " +
+                    stateError;
+            }
+            logFile_.close();
+            return false;
+        }
+
         log(L"Session started: " + presetName_);
         return true;
+    } catch (const std::exception& ex) {
+        running_ = false;
+        if (logFile_.is_open())
+            logFile_.close();
+
+        if (error) {
+            const std::string message = ex.what();
+            *error =
+                L"Session initialization exception: " +
+                std::wstring(
+                    message.begin(),
+                    message.end());
+        }
+        return false;
     } catch (...) {
         running_ = false;
+        if (logFile_.is_open())
+            logFile_.close();
+
+        if (error)
+            *error = L"Unknown session initialization exception";
         return false;
     }
 }
@@ -124,31 +198,45 @@ void SessionManager::stop() {
         logFile_.close();
 }
 
-void SessionManager::writeState(const wchar_t* state) {
-    if (sessionPath_.empty()) return;
+bool SessionManager::writeState(
+    const wchar_t* state,
+    std::wstring* error) {
 
-    const auto target = sessionPath_ / L"session.json";
-    const auto temp = sessionPath_ / L"session.json.tmp";
+    if (sessionPath_.empty()) {
+        if (error)
+            *error = L"Session path is empty";
+        return false;
+    }
 
-    std::ofstream out(temp, std::ios::binary | std::ios::out | std::ios::trunc);
-    if (!out) return;
+    AtomicOutputFile stateFile(
+        sessionPath_ / L"session.json");
+    auto& out = stateFile.stream();
+
+    if (!stateFile.isOpen()) {
+        if (error)
+            *error = L"Cannot create temporary session state";
+        return false;
+    }
 
     out << "{\n"
-        << "  \"state\": \"" << jsonEscapeUtf8(state) << "\",\n"
-        << "  \"preset\": \"" << jsonEscapeUtf8(presetName_) << "\",\n"
-        << "  \"updated_at\": \"" << jsonEscapeUtf8(timestamp(false)) << "\"\n"
+        << "  \"state\": \""
+        << jsonEscapeUtf8(state)
+        << "\",\n"
+        << "  \"preset\": \""
+        << jsonEscapeUtf8(presetName_)
+        << "\",\n"
+        << "  \"updated_at\": \""
+        << jsonEscapeUtf8(timestamp(false))
+        << "\"\n"
         << "}\n";
-    out.flush();
-    out.close();
 
-    if (!MoveFileExW(
-            temp.c_str(),
-            target.c_str(),
-            MOVEFILE_REPLACE_EXISTING |
-                MOVEFILE_WRITE_THROUGH)) {
-        std::error_code cleanupEc;
-        std::filesystem::remove(temp, cleanupEc);
+    if (!out) {
+        if (error)
+            *error = L"Cannot write session state";
+        return false;
     }
+
+    return stateFile.commit(error);
 }
 
 void SessionManager::log(const std::wstring& message) {
