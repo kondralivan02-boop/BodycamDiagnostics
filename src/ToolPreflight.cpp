@@ -92,6 +92,11 @@ bool runAndCapture(const std::filesystem::path& exe, const std::wstring& args,
 bool containsAscii(const std::string& text, const char* needle) {
     return text.find(needle) != std::string::npos;
 }
+
+constexpr const char* kPresentMonSha256 =
+    "b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af";
+constexpr const char* kFfmpegSha256 =
+    "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec";
 }
 
 std::string fileSha256Hex(const std::filesystem::path& file) {
@@ -187,11 +192,16 @@ ToolPreflightResult runToolPreflight(
     ec.clear();
     r.ffmpegFound = std::filesystem::is_regular_file(ffmpegExe, ec);
 
+    if (r.presentMonFound)
+        r.presentMonTrusted = fileSha256Hex(presentMonExe) == kPresentMonSha256;
+    if (r.ffmpegFound)
+        r.ffmpegTrusted = fileSha256Hex(ffmpegExe) == kFfmpegSha256;
+
     std::wstring d;
     d += L"PresentMon: ";
-    d += r.presentMonFound ? L"OK" : L"MISSING";
+    d += r.presentMonFound ? (r.presentMonTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
     d += L"\nFFmpeg: ";
-    d += r.ffmpegFound ? L"OK" : L"MISSING";
+    d += r.ffmpegFound ? (r.ffmpegTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
 
     if (r.ffmpegFound) {
         std::string encoders;

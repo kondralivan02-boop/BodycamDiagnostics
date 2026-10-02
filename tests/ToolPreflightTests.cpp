@@ -32,6 +32,12 @@ int main() {
               "f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
           "SHA-256 must be computed exactly for runtime tools");
 
+    const auto fakeFfmpeg = root / "ffmpeg.exe";
+    std::ofstream(fakeFfmpeg) << "not-the-verified-ffmpeg";
+    const auto preflight = runToolPreflight(preferred, fakeFfmpeg);
+    check(preflight.ffmpegFound, "test ffmpeg fixture should be found");
+    check(!preflight.ffmpegTrusted, "unknown ffmpeg hash must not be trusted");
+
     std::ofstream(preferred) << "fixture";
     check(resolveRuntimeTool(root, L"PresentMon.exe") == preferred,
           "Tools path must take priority when both copies exist");

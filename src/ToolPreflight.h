@@ -5,6 +5,8 @@
 struct ToolPreflightResult {
     bool presentMonFound = false;
     bool ffmpegFound = false;
+    bool presentMonTrusted = false;
+    bool ffmpegTrusted = false;
     bool nvencAvailable = false;
     bool ddagrabAvailable = false;
     std::wstring details;
