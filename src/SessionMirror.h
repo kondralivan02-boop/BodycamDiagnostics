@@ -31,4 +31,7 @@ private:
     std::atomic_int lastErrorCode_{0};
     std::thread thread_;
     std::map<std::filesystem::path, std::uintmax_t> previousVideoSizes_;
+    bool stopCompleted_ = false;
+    bool lastStopResult_ = true;
+    std::wstring lastStopError_;
 };

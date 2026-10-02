@@ -55,6 +55,28 @@ int main() {
         check(std::filesystem::is_regular_file(
                   target / L"video_without_audio.mkv"),
               "final video without audio must be mirrored");
+
+        {
+            std::ofstream(
+                target / L"video_with_audio.mkv",
+                std::ios::binary | std::ios::trunc)
+                << "post-stop-marker";
+        }
+
+        std::wstring secondStopError;
+        check(mirror.stop(&secondStopError),
+              "repeated mirror stop must return cached success");
+        check(secondStopError.empty(),
+              "repeated successful stop must keep empty error");
+
+        std::ifstream markerFile(
+            target / L"video_with_audio.mkv",
+            std::ios::binary);
+        const std::string marker{
+            std::istreambuf_iterator<char>(markerFile),
+            std::istreambuf_iterator<char>()};
+        check(marker == "post-stop-marker",
+              "repeated stop must not perform a second final sync");
     }
 
     {

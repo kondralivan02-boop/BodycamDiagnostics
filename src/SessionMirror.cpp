@@ -16,6 +16,9 @@ SessionMirror::~SessionMirror() {
 bool SessionMirror::start(std::wstring* error) {
     if (running()) return true;
 
+    stopCompleted_ = false;
+    lastStopResult_ = true;
+    lastStopError_.clear();
     lastErrorCode_.store(0);
 
     std::error_code ec;
@@ -37,6 +40,12 @@ bool SessionMirror::start(std::wstring* error) {
 }
 
 bool SessionMirror::stop(std::wstring* error) {
+    if (stopCompleted_) {
+        if (error)
+            *error = lastStopError_;
+        return lastStopResult_;
+    }
+
     running_.store(false);
     if (thread_.joinable())
         thread_.join();
@@ -44,13 +53,25 @@ bool SessionMirror::stop(std::wstring* error) {
     const bool finalSyncOk =
         syncOnce(true);
 
-    if (!finalSyncOk || !healthy(error)) {
-        if (error && error->empty())
-            *error = L"Persistent mirror final sync failed";
-        return false;
+    lastStopError_.clear();
+    const bool runtimeHealthy =
+        healthy(&lastStopError_);
+
+    lastStopResult_ =
+        finalSyncOk && runtimeHealthy;
+
+    if (!lastStopResult_ &&
+        lastStopError_.empty()) {
+        lastStopError_ =
+            L"Persistent mirror final sync failed";
     }
 
-    return true;
+    stopCompleted_ = true;
+
+    if (error)
+        *error = lastStopError_;
+
+    return lastStopResult_;
 }
 
 bool SessionMirror::healthy(std::wstring* error) const {
