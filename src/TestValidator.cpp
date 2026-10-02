@@ -200,6 +200,19 @@ std::filesystem::path finalVideoPath(
     videoHasAudio = false;
     return {};
 }
+
+std::filesystem::path partVideoPath(const std::filesystem::path& sessionPath,
+                                    std::size_t part,
+                                    bool& hasAudio) {
+    const auto prefix = L"video_part_" + std::to_wstring(part) + L"_";
+    std::error_code ec;
+    auto path = sessionPath / (prefix + L"video_with_audio.mkv");
+    if (std::filesystem::is_regular_file(path, ec)) { hasAudio = true; return path; }
+    path = sessionPath / (prefix + L"video_without_audio.mkv");
+    hasAudio = false;
+    if (std::filesystem::is_regular_file(path, ec)) return path;
+    return {};
+}
 }
 
 TestValidationResult validateTestSession(
@@ -208,11 +221,15 @@ TestValidationResult validateTestSession(
     double expectedDurationSeconds,
     bool gameExitedUnexpectedly,
     bool ffmpegTrustedForProbe,
-    double requestedVideoSeconds) {
+    double requestedVideoSeconds,
+    bool videoCaptureFailed,
+    const std::vector<double>& requestedIntervals) {
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
     result.requestedVideoSeconds = requestedVideoSeconds;
+    if (videoCaptureFailed)
+        result.issues.push_back(L"Запрошенная запись видео прервалась или не запустилась");
 
     if (gameExitedUnexpectedly)
         result.issues.push_back(L"Bodycam exited or crashed during the test");
@@ -239,14 +256,46 @@ TestValidationResult validateTestSession(
         finalVideoPath(sessionPath, videoHasAudio);
 
     ec.clear();
-    if (requestedVideoSeconds <= 0.0) {
+    if (!requestedIntervals.empty()) {
+        result.videoDurationChecked = ffmpegTrustedForProbe;
+        for (std::size_t index = 0; index < requestedIntervals.size(); ++index) {
+            bool hasAudio = false;
+            const auto part = partVideoPath(sessionPath, index + 1, hasAudio);
+            ec.clear();
+            if (part.empty() || !std::filesystem::is_regular_file(part, ec) ||
+                std::filesystem::file_size(part, ec) == 0) {
+                result.issues.push_back(L"Отсутствует фрагмент видео " + std::to_wstring(index + 1));
+                result.videoDurationChecked = false;
+                continue;
+            }
+            if (!hasAudio) result.warnings.push_back(L"Фрагмент видео без игрового звука");
+            if (requestedIntervals[index] > 1.0) {
+                if (!ffmpegTrustedForProbe) {
+                    result.issues.push_back(L"FFmpeg не проверен; длительность фрагмента неизвестна");
+                    result.videoDurationChecked = false;
+                    continue;
+                }
+                double duration = 0.0;
+                if (!probeVideoDurationSeconds(defaultFfmpegPath(sessionPath), part, sessionPath, duration)) {
+                    result.issues.push_back(L"Не удалось измерить длительность фрагмента " + std::to_wstring(index + 1));
+                    result.videoDurationChecked = false;
+                    continue;
+                }
+                result.videoDurationSeconds += duration;
+                if (duration / requestedIntervals[index] < 0.90)
+                    result.issues.push_back(L"Фрагмент видео " + std::to_wstring(index + 1) + L" короче запрошенного интервала");
+            }
+        }
+        if (requestedVideoSeconds > 0.0)
+            result.videoCoverageRatio = result.videoDurationSeconds / requestedVideoSeconds;
+    } else if (requestedVideoSeconds <= 0.0 && !videoCaptureFailed) {
         result.warnings.push_back(L"Видео выключено пользователем; диагностический тест выполнен без записи");
-    } else if (video.empty() ||
+    } else if (requestedVideoSeconds > 0.0 && (video.empty() ||
         !std::filesystem::is_regular_file(video, ec) ||
-        std::filesystem::file_size(video, ec) == 0) {
+        std::filesystem::file_size(video, ec) == 0)) {
         result.issues.push_back(
             L"Final video is missing or empty");
-    } else {
+    } else if (requestedVideoSeconds > 0.0) {
         if (!videoHasAudio) {
             result.warnings.push_back(
                 L"Final video has no WASAPI audio; video capture remains valid");

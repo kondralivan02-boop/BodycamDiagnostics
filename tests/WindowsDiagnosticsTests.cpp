@@ -25,6 +25,8 @@ int main(int argc, char** argv) {
     metrics.valid = true;
     std::filesystem::remove(root / L"video_with_audio.mkv");
     check(validateTestSession(root, metrics, 0.5, false, false).valid, "video disabled must allow valid diagnostics");
+    check(!validateTestSession(root, metrics, 0.5, false, false, 0.0, true).valid,
+          "failed recording request must not be reported as disabled video");
     check(!validateTestSession(root, metrics, 0.5, false, false, 0.4).valid, "requested video missing must invalidate capture");
 
     std::ofstream(root / L"video_without_audio.mkv") << "video-only fixture";
@@ -69,6 +71,14 @@ int main(int argc, char** argv) {
           "untrusted FFmpeg must block duration-probe validation");
     check(!untrustedProbe.videoDurationChecked,
           "untrusted FFmpeg must never be executed for duration probe");
+    std::ofstream(runtimeSession / L"video_part_1_video_without_audio.mkv") << "first";
+    const auto missingSecondPart = validateTestSession(
+        runtimeSession, durationMetrics, 10.0, false, true, 10.0, false, {5.0, 5.0});
+    check(!missingSecondPart.valid, "each recording interval needs its own video file");
+    std::ofstream(runtimeSession / L"video_part_2_video_without_audio.mkv") << "second";
+    const auto separateParts = validateTestSession(
+        runtimeSession, durationMetrics, 10.0, false, true, 10.0, false, {5.0, 5.0});
+    check(separateParts.valid, "separate completed intervals must validate independently");
     const auto caps = probeEnvironmentCapabilities(GetCurrentProcessId());
     check(caps.sources.size() == 3, "both channels probed independently");
     check(caps.sources.front().status == "available", "current process query");

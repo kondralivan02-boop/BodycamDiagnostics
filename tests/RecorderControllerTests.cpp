@@ -71,6 +71,17 @@ int wmain(int argc, wchar_t** argv) {
               "desktop duplication loss must have a Russian explanation");
     }
 
+    {
+        RecorderController controller(recoveryFailure);
+        std::wstring error;
+        check(controller.start(root / L"video-exit", &error), "exit fixture must start");
+        Sleep(600);
+        std::wstring event;
+        check(!controller.maintain(&event), "an FFmpeg exit must close the requested recording interval");
+        check(event.find(L"остановлена") != std::wstring::npos,
+              "ordinary FFmpeg exit must be explained in Russian");
+    }
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Recorder controller tests passed\n";
 }

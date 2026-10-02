@@ -24,7 +24,9 @@ TestValidationResult validateTestSession(
     double expectedDurationSeconds,
     bool gameExitedUnexpectedly,
     bool ffmpegTrustedForProbe,
-    double requestedVideoSeconds = 0.0);
+    double requestedVideoSeconds = 0.0,
+    bool videoCaptureFailed = false,
+    const std::vector<double>& requestedIntervals = {});
 
 bool writeTestValidationReport(
     const TestValidationResult& result,

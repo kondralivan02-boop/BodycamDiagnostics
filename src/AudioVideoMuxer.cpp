@@ -67,10 +67,12 @@ bool runProcess(const std::filesystem::path& exe,
 }
 }
 
-bool finalizeSessionVideo(
+namespace {
+bool finalizeVideo(
     const std::filesystem::path& ffmpegExe,
     const std::filesystem::path& sessionDirectory,
     bool includeAudio,
+    unsigned partNumber,
     std::wstring* error) {
     std::error_code ec;
 
@@ -85,7 +87,8 @@ bool finalizeSessionVideo(
         includeAudio &&
         std::filesystem::is_regular_file(audioFile, ec);
 
-    const auto videoDir = sessionDirectory / L"video";
+    const auto partLabel = partNumber ? L"part_" + std::to_wstring(partNumber) : std::wstring{};
+    const auto videoDir = partNumber ? sessionDirectory / L"video" / partLabel : sessionDirectory / L"video";
     ec.clear();
     if (!std::filesystem::is_directory(videoDir, ec)) {
         if (error) *error = L"Video directory not found";
@@ -128,12 +131,14 @@ bool finalizeSessionVideo(
         }
     }
 
-    const auto output = sessionDirectory /
-        (audioAvailable
+    const auto outputName = audioAvailable
             ? L"video_with_audio.mkv"
-            : L"video_without_audio.mkv");
+            : L"video_without_audio.mkv";
+    const auto output = sessionDirectory /
+        (partNumber ? L"video_" + partLabel + L"_" + outputName : std::wstring(outputName));
 
     const auto alternateOutput = sessionDirectory /
+        (partNumber ? L"video_" + partLabel + L"_" : std::wstring{}) +
         (audioAvailable
             ? L"video_without_audio.mkv"
             : L"video_with_audio.mkv");
@@ -188,7 +193,8 @@ bool finalizeSessionVideo(
     std::wstring cleanupWarning;
 
     const auto captureLog = videoDir / L"video_capture.log";
-    const auto preservedCaptureLog = sessionDirectory / L"video_capture.log";
+    const auto preservedCaptureLog = sessionDirectory /
+        (partNumber ? L"video_" + partLabel + L"_capture.log" : std::wstring(L"video_capture.log"));
     ec.clear();
     if (std::filesystem::is_regular_file(captureLog, ec)) {
         std::wstring preserveError;
@@ -225,4 +231,24 @@ bool finalizeSessionVideo(
         *error = cleanupWarning;
 
     return true;
+}
+}
+
+bool finalizeSessionVideo(const std::filesystem::path& ffmpegExe,
+                          const std::filesystem::path& sessionDirectory,
+                          bool includeAudio,
+                          std::wstring* error) {
+    return finalizeVideo(ffmpegExe, sessionDirectory, includeAudio, 0, error);
+}
+
+bool finalizeRecordingPart(const std::filesystem::path& ffmpegExe,
+                           const std::filesystem::path& sessionDirectory,
+                           unsigned partNumber,
+                           bool includeAudio,
+                           std::wstring* error) {
+    if (partNumber == 0) {
+        if (error) *error = L"Recording part number must be positive";
+        return false;
+    }
+    return finalizeVideo(ffmpegExe, sessionDirectory, includeAudio, partNumber, error);
 }

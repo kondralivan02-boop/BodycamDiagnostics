@@ -35,7 +35,7 @@ bool FrameContinuity::accept(const std::string& timestamp, double frameTimeMs, c
     bool gap = false;
     if (hasTime && hasPrevious_) {
         const double elapsed = static_cast<double>(now - previousMs_);
-        gap = elapsed < 0 || elapsed > (std::max)(500.0, frameTimeMs * 3.0) ||
+        gap = elapsed < 0 || elapsed > 500.0 ||
             (frameTimeMs > 500.0 && !presentMode.empty() && !previousMode_.empty() && presentMode != previousMode_);
     }
     if (gap) intervals_.push_back({previousTimestamp_, timestamp});

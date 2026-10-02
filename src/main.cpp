@@ -619,7 +619,8 @@ void stopSession() {
         case RecordingState::Lost: intervals << "lost"; break;
         case RecordingState::Stopped: intervals << "stopped"; break;
         }
-        intervals << "\",\"requested_seconds\":" << gRecording.requestedSeconds() << ",\"intervals\":[";
+        intervals << "\",\"had_failure\":" << (gRecording.hadFailure() ? "true" : "false")
+                  << ",\"requested_seconds\":" << gRecording.requestedSeconds() << ",\"intervals\":[";
         bool first = true;
         for (const auto& interval : gRecording.intervals()) {
             if (!first) intervals << ',';
@@ -657,33 +658,20 @@ void stopSession() {
         logEvent(
             L"Финализация видео заблокирована  •  "
             L"FFmpeg trust revalidation failed; raw capture preserved");
-    } else if (finalizeSessionVideo(
-            gRuntimeFfmpegExe,
-            sessionPath,
-            includeAudioInFinalVideo && gRecording.intervals().size() == 1,
-            &muxError)) {
-        std::error_code finalVideoEc;
-        if (std::filesystem::is_regular_file(
-                sessionPath / L"video_with_audio.mkv",
-                finalVideoEc)) {
-            logEvent(L"Видео со звуком  •  video_with_audio.mkv");
-        } else {
-            finalVideoEc.clear();
-            if (std::filesystem::is_regular_file(
-                    sessionPath / L"video_without_audio.mkv",
-                    finalVideoEc)) {
-                logEvent(
-                    L"Видео без аудио  •  video_without_audio.mkv"
-                    L"  •  optional WASAPI audio недоступен или incomplete");
+    } else {
+        for (std::size_t index = 0; index < gRecording.intervals().size(); ++index) {
+            muxError.clear();
+            const unsigned part = static_cast<unsigned>(index + 1);
+            if (finalizeRecordingPart(
+                    gRuntimeFfmpegExe, sessionPath, part,
+                    includeAudioInFinalVideo && gRecording.intervals().size() == 1,
+                    &muxError)) {
+                logEvent(L"Видео: фрагмент " + std::to_wstring(part) + L" сохранён отдельно");
+                if (!muxError.empty()) logEvent(L"Предупреждение очистки  •  " + muxError);
             } else {
-                logEvent(L"Видео финализировано");
+                logEvent(L"Видео: не удалось собрать фрагмент " + std::to_wstring(part) + L"  •  " + muxError);
             }
         }
-
-        if (!muxError.empty())
-            logEvent(L"Предупреждение очистки  •  " + muxError);
-    } else {
-        logEvent(L"Финализация видео пропущена  •  " + muxError);
     }
 
     const auto summary = calculateMetrics(
@@ -773,13 +761,18 @@ void stopSession() {
             : "FFmpeg or runtime manifest changed after finalization; duration probe blocked")
     });
 
+    std::vector<double> requestedVideoIntervals;
+    for (const auto& interval : gRecording.intervals())
+        requestedVideoIntervals.push_back(std::chrono::duration<double>(interval.end - interval.start).count());
     const auto validation = validateTestSession(
         sessionPath,
         summary,
         sessionDurationSeconds,
         gGameExitedUnexpectedly,
         ffmpegTrustedForProbe,
-        gRecording.requestedSeconds());
+        gRecording.requestedSeconds(),
+        gRecording.hadFailure(),
+        requestedVideoIntervals);
 
     std::wstring validationError;
     if (writeTestValidationReport(
@@ -978,7 +971,9 @@ void toggleRecording() {
     }
     gRecorder = std::make_unique<RecorderController>(gRuntimeFfmpegExe);
     std::wstring error;
-    if (!gRecorder->start(gSession->sessionPath() / L"video", &error)) {
+    const auto partDirectory = gSession->sessionPath() / L"video" /
+        (L"part_" + std::to_wstring(gRecording.intervals().size() + 1));
+    if (!gRecorder->start(partDirectory, &error)) {
         gRecorder.reset();
         gRecording.lost(std::chrono::steady_clock::now());
         logEvent(L"Видео: не удалось начать запись  •  " + error);

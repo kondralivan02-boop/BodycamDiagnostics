@@ -17,4 +17,10 @@ int main() {
     check(timeline.state() == RecordingState::Lost);
     check(timeline.intervals().size() == 2);
     check(timeline.requestedSeconds() == 5.0);
+    check(timeline.hadFailure());
+    RecordingTimeline failedStart;
+    failedStart.starting();
+    failedStart.lost(base + std::chrono::seconds(1));
+    check(failedStart.hadFailure());
+    check(failedStart.intervals().empty());
 }

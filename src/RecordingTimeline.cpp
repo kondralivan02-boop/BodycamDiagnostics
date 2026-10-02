@@ -19,6 +19,7 @@ void RecordingTimeline::stop(std::chrono::steady_clock::time_point at) {
 void RecordingTimeline::lost(std::chrono::steady_clock::time_point at) {
     close(at);
     state_ = RecordingState::Lost;
+    hadFailure_ = true;
 }
 
 double RecordingTimeline::requestedSeconds() const noexcept {

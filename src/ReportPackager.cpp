@@ -472,6 +472,22 @@ bool packageSessionReport(
         }
     }
 
+    for (std::filesystem::directory_iterator it(sessionDirectory, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        const auto filename = it->path().filename().wstring();
+        if (filename.rfind(L"video_part_", 0) == 0 &&
+            filename.size() >= 12 &&
+            filename.ends_with(L"_capture.log") &&
+            !appendRegularFile(sessionDirectory, it->path(), entries)) {
+            if (error) *error = L"Cannot include video capture log";
+            return false;
+        }
+    }
+    if (ec) {
+        if (error) *error = L"Cannot enumerate video capture logs";
+        return false;
+    }
+
     if (!appendDirectory(
             sessionDirectory,
             sessionDirectory / L"crash_diagnostics",

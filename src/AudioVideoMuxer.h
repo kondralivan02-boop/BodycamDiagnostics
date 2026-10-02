@@ -8,3 +8,10 @@ bool finalizeSessionVideo(
     const std::filesystem::path& sessionDirectory,
     bool includeAudio,
     std::wstring* error = nullptr);
+
+bool finalizeRecordingPart(
+    const std::filesystem::path& ffmpegExe,
+    const std::filesystem::path& sessionDirectory,
+    unsigned partNumber,
+    bool includeAudio,
+    std::wstring* error = nullptr);

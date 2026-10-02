@@ -180,6 +180,16 @@ bool SessionMirror::syncOnce(bool finalPass) {
             if (!copyRelativeFile(name))
                 return false;
         }
+        std::error_code partEc;
+        for (std::filesystem::directory_iterator it(sourceSession_, partEc), end;
+             !partEc && it != end; it.increment(partEc)) {
+            if (!it->is_regular_file(partEc)) continue;
+            const auto filename = it->path().filename();
+            if (filename.wstring().rfind(L"video_part_", 0) == 0 &&
+                filename.extension() == L".mkv" && !copyRelativeFile(filename))
+                return false;
+        }
+        if (partEc) { recordFailure(partEc.value()); return false; }
     }
 
     const auto videoDir = sourceSession_ / L"video";
@@ -262,4 +272,3 @@ void SessionMirror::worker() {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
-

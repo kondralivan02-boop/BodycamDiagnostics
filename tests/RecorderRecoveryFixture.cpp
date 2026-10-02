@@ -23,8 +23,10 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     Sleep(900);
-    const char failure[] = "AcquireNextFrame failed: 887a0026\n";
-    DWORD written = 0;
-    WriteFile(GetStdHandle(STD_ERROR_HANDLE), failure, sizeof(failure) - 1, &written, nullptr);
+    if (outputPattern.parent_path().filename() == L"video-recovery") {
+        const char failure[] = "AcquireNextFrame failed: 887a0026\n";
+        DWORD written = 0;
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), failure, sizeof(failure) - 1, &written, nullptr);
+    }
     return 23;
 }

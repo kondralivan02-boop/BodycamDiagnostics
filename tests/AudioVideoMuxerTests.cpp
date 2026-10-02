@@ -108,6 +108,17 @@ int wmain(int argc, wchar_t** argv) {
               "ffmpeg warning evidence without audio",
           "video-only finalization must preserve FFmpeg evidence");
 
+    std::filesystem::create_directories(root / L"video" / L"part_1");
+    std::filesystem::create_directories(root / L"video" / L"part_2");
+    std::ofstream(root / L"video" / L"part_1" / L"video_00000.mkv") << "first interval";
+    std::ofstream(root / L"video" / L"part_2" / L"video_00000.mkv") << "second interval";
+    check(finalizeRecordingPart(fixture, root, 1, false, &error), "first interval must finalize");
+    check(finalizeRecordingPart(fixture, root, 2, false, &error), "second interval must finalize");
+    check(std::filesystem::is_regular_file(root / L"video_part_1_video_without_audio.mkv"),
+          "first recording interval must have a distinct video");
+    check(std::filesystem::is_regular_file(root / L"video_part_2_video_without_audio.mkv"),
+          "second recording interval must have a distinct video");
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
 }

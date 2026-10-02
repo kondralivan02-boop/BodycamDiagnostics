@@ -23,6 +23,5 @@ private:
     std::filesystem::path outputDirectory_;
     HANDLE process_ = nullptr;
     HANDLE stdinWrite_ = nullptr;
-    unsigned restartCount_ = 0;
     bool disabled_ = false;
 };
