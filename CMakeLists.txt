@@ -38,6 +38,7 @@ add_executable(BodycamDiagnostics WIN32
     src/PerformanceHealth.cpp
     src/StutterCorrelator.cpp
     src/BodycamLogs.cpp
+    src/BuildInfo.cpp
     src/EnvironmentDiagnostics.cpp
     src/DiagnosticEvidence.cpp
     src/SessionDiagnostics.cpp
@@ -73,6 +74,9 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(BuildInfoTests tests/BuildInfoTests.cpp src/BuildInfo.cpp)
+    target_include_directories(BuildInfoTests PRIVATE src "${CMAKE_BINARY_DIR}/generated")
+    add_test(NAME BuildInfoTests COMMAND BuildInfoTests)
     add_executable(BodycamLogsTests tests/BodycamLogsTests.cpp src/BodycamLogs.cpp src/DiagnosticEvidence.cpp)
     target_include_directories(BodycamLogsTests PRIVATE src)
     target_compile_definitions(BodycamLogsTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -128,6 +132,7 @@ if(BUILD_TESTING)
     target_link_libraries(WindowsDiagnosticsTests PRIVATE wevtapi)
     add_test(NAME WindowsDiagnosticsTests COMMAND WindowsDiagnosticsTests)
     if(MSVC)
+        target_compile_options(BuildInfoTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(BodycamLogsTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(DiagnosticEvidenceTests PRIVATE /utf-8 /W4 /WX)
         target_compile_options(ToolPreflightTests PRIVATE /utf-8 /W4 /WX)
