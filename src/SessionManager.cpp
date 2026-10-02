@@ -1,4 +1,5 @@
 #include "SessionManager.h"
+#include "BuildInfo.h"
 #include <Windows.h>
 
 #include <chrono>
@@ -93,6 +94,14 @@ bool SessionManager::start(const std::wstring& presetName) {
         logFile_.open(sessionPath_ / L"session.log",
                       std::ios::binary | std::ios::out | std::ios::app);
         if (!logFile_) return false;
+
+        std::wstring buildInfoError;
+        if (!writeBuildInfoReport(
+                sessionPath_ / L"build_info.json",
+                &buildInfoError)) {
+            logFile_.close();
+            return false;
+        }
 
         running_ = true;
         writeState(L"running");
