@@ -6,7 +6,11 @@
 #include <stdexcept>
 
 void check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
-int main() {
+int main(int argc, char** argv) {
+    check(argc == 2, "expected FFmpeg duration fixture path");
+    const std::filesystem::path ffmpegFixture = argv[1];
+    check(std::filesystem::is_regular_file(ffmpegFixture),
+          "FFmpeg duration fixture must exist");
     const auto root = std::filesystem::temp_directory_path() / (L"BodycamDiagnostics-test-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(root);
     std::ofstream(root / L"video_with_audio.mkv") << "fixture";
@@ -21,6 +25,30 @@ int main() {
     metrics.valid = true;
     std::filesystem::remove(root / L"video_with_audio.mkv");
     check(!validateTestSession(root, metrics, 0.5, false).valid, "missing video still invalidates capture");
+
+    std::ofstream(root / L"video_without_audio.mkv") << "video-only fixture";
+    check(validateTestSession(root, metrics, 0.5, false).valid,
+          "video_without_audio.mkv must satisfy required final-video validation");
+    std::filesystem::remove(root / L"video_without_audio.mkv");
+
+    const auto runtimeApp = root / L"runtime-app";
+    const auto runtimeSession = runtimeApp / L"Sessions" / L"session";
+    std::filesystem::create_directories(runtimeSession);
+    std::filesystem::copy_file(
+        ffmpegFixture,
+        runtimeApp / L"ffmpeg.exe",
+        std::filesystem::copy_options::overwrite_existing);
+    std::ofstream(runtimeSession / L"video_with_audio.mkv") << "duration probe fixture";
+
+    MetricsSummary durationMetrics;
+    durationMetrics.valid = true;
+    durationMetrics.durationSeconds = 10.0;
+    const auto fallbackValidation =
+        validateTestSession(runtimeSession, durationMetrics, 10.0, false);
+    check(fallbackValidation.valid,
+          "validator must accept root-level FFmpeg runtime fallback");
+    check(fallbackValidation.videoDurationChecked,
+          "root-level FFmpeg fallback must be used for duration probe");
     const auto caps = probeEnvironmentCapabilities(GetCurrentProcessId());
     check(caps.sources.size() == 3, "both channels probed independently");
     check(caps.sources.front().status == "available", "current process query");
