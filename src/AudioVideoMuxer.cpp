@@ -78,10 +78,8 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
 
     const auto audioFile = sessionDirectory / L"game_audio.wav";
     ec.clear();
-    if (!std::filesystem::is_regular_file(audioFile, ec)) {
-        if (error) *error = L"game_audio.wav not found";
-        return false;
-    }
+    const bool audioAvailable =
+        std::filesystem::is_regular_file(audioFile, ec);
 
     const auto videoDir = sessionDirectory / L"video";
     ec.clear();
@@ -126,17 +124,37 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
         }
     }
 
-    const auto output = sessionDirectory / L"video_with_audio.mkv";
+    const auto output = sessionDirectory /
+        (audioAvailable
+            ? L"video_with_audio.mkv"
+            : L"video_without_audio.mkv");
+
+    const auto alternateOutput = sessionDirectory /
+        (audioAvailable
+            ? L"video_without_audio.mkv"
+            : L"video_with_audio.mkv");
+
     ec.clear();
     std::filesystem::remove(output, ec);
+    ec.clear();
+    std::filesystem::remove(alternateOutput, ec);
 
-    const std::wstring args =
+    std::wstring args =
         L"-hide_banner -loglevel error -y "
-        L"-f concat -safe 0 -i " + quote(concatFile.wstring()) + L" "
-        L"-i " + quote(audioFile.wstring()) + L" "
-        L"-map 0:v:0 -map 1:a:0 "
-        L"-c:v copy -c:a aac -b:a 192k -ar 48000 "
-        L"-shortest " + quote(output.wstring());
+        L"-f concat -safe 0 -i " + quote(concatFile.wstring()) + L" ";
+
+    if (audioAvailable) {
+        args +=
+            L"-i " + quote(audioFile.wstring()) + L" "
+            L"-map 0:v:0 -map 1:a:0 "
+            L"-c:v copy -c:a aac -b:a 192k -ar 48000 "
+            L"-shortest ";
+    } else {
+        args +=
+            L"-map 0:v:0 -c:v copy ";
+    }
+
+    args += quote(output.wstring());
 
     const bool ok = runProcess(
         ffmpegExe,
@@ -152,7 +170,12 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
     ec.clear();
     if (!std::filesystem::is_regular_file(output, ec) ||
         std::filesystem::file_size(output, ec) == 0) {
-        if (error) *error = L"video_with_audio.mkv was not created";
+        if (error) {
+            *error =
+                audioAvailable
+                    ? L"video_with_audio.mkv was not created"
+                    : L"video_without_audio.mkv was not created";
+        }
         return false;
     }
 
@@ -174,11 +197,13 @@ bool muxSessionVideoWithAudio(const std::filesystem::path& ffmpegExe,
             cleanupWarning += L"Could not preserve video_capture.log";
     }
 
-    ec.clear();
-    if (!std::filesystem::remove(audioFile, ec) && ec) {
-        if (!cleanupWarning.empty())
-            cleanupWarning += L"; ";
-        cleanupWarning += L"Could not remove game_audio.wav";
+    if (audioAvailable) {
+        ec.clear();
+        if (!std::filesystem::remove(audioFile, ec) && ec) {
+            if (!cleanupWarning.empty())
+                cleanupWarning += L"; ";
+            cleanupWarning += L"Could not remove game_audio.wav";
+        }
     }
 
     ec.clear();

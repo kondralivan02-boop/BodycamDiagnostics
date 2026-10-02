@@ -580,11 +580,28 @@ void stopSession() {
             gRuntimeFfmpegExe,
             sessionPath,
             &muxError)) {
-        logEvent(L"Видео со звуком  •  video_with_audio.mkv");
+        std::error_code finalVideoEc;
+        if (std::filesystem::is_regular_file(
+                sessionPath / L"video_with_audio.mkv",
+                finalVideoEc)) {
+            logEvent(L"Видео со звуком  •  video_with_audio.mkv");
+        } else {
+            finalVideoEc.clear();
+            if (std::filesystem::is_regular_file(
+                    sessionPath / L"video_without_audio.mkv",
+                    finalVideoEc)) {
+                logEvent(
+                    L"Видео без аудио  •  video_without_audio.mkv"
+                    L"  •  WASAPI был недоступен");
+            } else {
+                logEvent(L"Видео финализировано");
+            }
+        }
+
         if (!muxError.empty())
             logEvent(L"Предупреждение очистки  •  " + muxError);
     } else {
-        logEvent(L"Сведение видео/аудио пропущено  •  " + muxError);
+        logEvent(L"Финализация видео пропущена  •  " + muxError);
     }
 
     const auto summary = calculateMetrics(
