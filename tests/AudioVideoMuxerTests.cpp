@@ -71,7 +71,6 @@ int wmain(int argc, wchar_t** argv) {
     check(muxArgs.find("-shortest") != std::string::npos,
           "mux must still stop at the mandatory video duration");
 
-
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root / L"video");
 
@@ -118,6 +117,26 @@ int wmain(int argc, wchar_t** argv) {
           "first recording interval must have a distinct video");
     check(std::filesystem::is_regular_file(root / L"video_part_2_video_without_audio.mkv"),
           "second recording interval must have a distinct video");
+
+    // Regression: each independently toggled recording interval must consume its own WAV.
+    // A session-level game_audio.wav would be truncated by the next WASAPI start.
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / L"video" / L"part_1");
+    std::filesystem::create_directories(root / L"video" / L"part_2");
+    std::ofstream(root / L"video" / L"part_1" / L"video_00000.mkv") << "first interval";
+    std::ofstream(root / L"video" / L"part_2" / L"video_00000.mkv") << "second interval";
+    std::ofstream(root / L"video" / L"part_1" / L"game_audio.wav") << "first audio";
+    std::ofstream(root / L"video" / L"part_2" / L"game_audio.wav") << "second audio";
+
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 1, true, &error),
+          "first interval with per-part audio must finalize");
+    check(finalizeRecordingPart(fixture, root, 2, true, &error),
+          "second interval with per-part audio must finalize");
+    check(std::filesystem::is_regular_file(root / L"video_part_1_video_with_audio.mkv"),
+          "first interval must retain its own audio");
+    check(std::filesystem::is_regular_file(root / L"video_part_2_video_with_audio.mkv"),
+          "second interval must retain its own audio");
 
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
