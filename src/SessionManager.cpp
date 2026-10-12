@@ -107,19 +107,36 @@ bool SessionManager::start(
             return false;
         }
 
-        sessionPath_ =
-            root_ /
-            (timestamp(true) + L"_" +
-             sanitizeForFileName(presetName_));
+        const auto sessionName =
+            timestamp(true) + L"_" + sanitizeForFileName(presetName_);
 
-        ec.clear();
-        std::filesystem::create_directories(sessionPath_, ec);
-        if (ec) {
-            if (error) {
-                *error =
-                    L"Cannot create session directory: " +
-                    std::to_wstring(ec.value());
+        // A timestamp has one-second precision. create_directories() would
+        // silently reopen an earlier session with the same preset and could
+        // overwrite its reports. Claim each directory exclusively instead.
+        bool sessionDirectoryCreated = false;
+        for (unsigned attempt = 0; attempt < 1000; ++attempt) {
+            const auto uniqueName = attempt == 0
+                ? sessionName
+                : sessionName + L"_" + std::to_wstring(attempt);
+            sessionPath_ = root_ / uniqueName;
+
+            ec.clear();
+            if (std::filesystem::create_directory(sessionPath_, ec)) {
+                sessionDirectoryCreated = true;
+                break;
             }
+            if (ec) {
+                if (error) {
+                    *error = L"Cannot create session directory: " +
+                        std::to_wstring(ec.value());
+                }
+                return false;
+            }
+            // An existing directory is never reused, even after a crash.
+        }
+        if (!sessionDirectoryCreated) {
+            if (error)
+                *error = L"Cannot allocate unique session directory";
             return false;
         }
 

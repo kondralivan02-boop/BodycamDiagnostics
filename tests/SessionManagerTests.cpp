@@ -36,6 +36,25 @@ int main() {
     check(startError.empty(),
           "successful session start must not report an error");
 
+    // Repeating the same preset immediately must never reuse the first
+    // session folder, even when both starts share the same wall-clock second.
+    const auto firstSessionPath = session.sessionPath();
+    std::ofstream(firstSessionPath / L"original-session-marker.txt")
+        << "preserve previous run";
+    SessionManager nextSession(root);
+    std::wstring nextError;
+    check(nextSession.start(L"Atomic State Test", &nextError),
+          "second session with identical preset must start");
+    check(nextSession.sessionPath() != firstSessionPath,
+          "session directory must never be reused");
+    check(readAll(firstSessionPath / L"original-session-marker.txt") ==
+              "preserve previous run",
+          "new session must preserve prior session evidence");
+    check(std::filesystem::is_regular_file(
+              nextSession.sessionPath() / L"session.json"),
+          "new session must have an independent state file");
+    nextSession.stop();
+
     const auto buildInfoPath =
         session.sessionPath() / L"build_info.json";
     check(std::filesystem::is_regular_file(buildInfoPath),
