@@ -145,7 +145,7 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
                          sessionDirectory, 180000, &muxError);
     std::wstring fallbackWarning;
 
-    const nonEmptyOutput = [](const std::filesystem::path& candidate) {
+    const auto nonEmptyOutput = [](const std::filesystem::path& candidate) {
         std::error_code checkEc;
         if (!std::filesystem::is_regular_file(candidate, checkEc))
             return false;
