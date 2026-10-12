@@ -129,6 +129,7 @@ jobs:
             dist/EnableFullscreenOverlay.ps1 `
             dist/EnableFullscreenOverlay.cmd `
             dist/settings.example.ini `
+            dist/СПРАВКА.txt `
             dist/runtime-tools.sha256 `
             dist/runtime-tools.sources.json `
             dist/InstallRuntimeTools.ps1 `
