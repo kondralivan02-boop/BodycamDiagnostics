@@ -212,6 +212,44 @@ int wmain(int argc, wchar_t** argv) {
           "both failed mux attempts must be diagnosed");
     std::filesystem::remove(root / L"mux_fixture_fail_all.txt", ec);
 
+    // FFmpeg may exit 0 and still leave a zero-byte audio mux output.
+    // This is an audio failure and must trigger the video-only retry.
+    std::filesystem::create_directories(recordingPartDirectory(root, 7));
+    std::ofstream(recordingPartDirectory(root, 7) / L"video_00000.mkv")
+        << "seventh interval raw video";
+    std::ofstream(recordingPartAudioPath(root, 7)) << "WAV fixture";
+    std::ofstream(root / L"mux_fixture_empty_audio.txt") << "force empty mux";
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 7, true, &error),
+          "empty successful audio mux must fall back to video-only");
+    check(std::filesystem::is_regular_file(root / L"video_part_7_video_without_audio.mkv"),
+          "fallback must produce non-empty video without audio");
+    check(std::filesystem::file_size(root / L"video_part_7_video_without_audio.mkv") > 0,
+          "fallback output must not be empty");
+    check(!std::filesystem::exists(root / L"video_part_7_video_with_audio.mkv"),
+          "zero-byte audio output must be discarded");
+    check(error.find(L"video saved without audio") != std::wstring::npos,
+          "empty audio mux recovery must be reported");
+    std::filesystem::remove(root / L"mux_fixture_empty_audio.txt", ec);
+
+    // Failure to preserve a capture log must not delete its only copy.
+    std::filesystem::create_directories(recordingPartDirectory(root, 8));
+    std::ofstream(recordingPartDirectory(root, 8) / L"video_00000.mkv")
+        << "eighth interval raw video";
+    std::ofstream(recordingPartDirectory(root, 8) / L"video_capture.log")
+        << "original FFmpeg failure evidence";
+    std::filesystem::create_directory(root / L"video_part_8_capture.log");
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 8, false, &error),
+          "video should finalize even when capture-log preservation fails");
+    check(std::filesystem::is_regular_file(root / L"video_part_8_video_without_audio.mkv"),
+          "final video must remain usable");
+    check(readAll(recordingPartDirectory(root, 8) / L"video_capture.log") ==
+              "original FFmpeg failure evidence",
+          "raw capture log must survive a failed copy");
+    check(error.find(L"Raw recording retained") != std::wstring::npos,
+          "report must explain why raw video was preserved");
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
 }

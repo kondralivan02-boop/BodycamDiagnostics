@@ -44,6 +44,11 @@ int wmain(int argc, wchar_t** argv) {
         return 18;
 
     const std::filesystem::path output = argv[argc - 1];
+    if (includesAudio && std::filesystem::exists(L"mux_fixture_empty_audio.txt")) {
+        // Simulate an FFmpeg success code with an invalid zero-byte MKV.
+        std::ofstream empty(output, std::ios::binary | std::ios::trunc);
+        return empty ? 0 : 4;
+    }
     std::ofstream out(output, std::ios::binary | std::ios::trunc);
     if (!out)
         return 3;

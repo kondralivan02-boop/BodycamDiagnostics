@@ -145,6 +145,21 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
                          sessionDirectory, 180000, &muxError);
     std::wstring fallbackWarning;
 
+    const nonEmptyOutput = [](const std::filesystem::path& candidate) {
+        std::error_code checkEc;
+        if (!std::filesystem::is_regular_file(candidate, checkEc))
+            return false;
+        const auto size = std::filesystem::file_size(candidate, checkEc);
+        return !checkEc && size > 0;
+    };
+
+    // FFmpeg can exit successfully without producing a usable output. An
+    // empty audio mux must trigger the same video-only recovery as an error.
+    if (ok && !nonEmptyOutput(output)) {
+        ok = false;
+        muxError = L"FFmpeg returned success but final video is missing or empty";
+    }
+
     // Audio is optional. If FFmpeg rejects its WAV, retry with the original
     // video segments intact rather than losing the entire recording interval.
     if (!ok && audioAvailable) {
@@ -179,11 +194,9 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
         return false; // Keep all raw segments and the capture log for recovery.
     }
 
-    ec.clear();
-    if (!std::filesystem::is_regular_file(output, ec) ||
-        std::filesystem::file_size(output, ec) == 0) {
+    if (!nonEmptyOutput(output)) {
         if (error) *error = L"Finalized video is missing or empty: " + output.filename().wstring();
-        return false;
+        return false; // Preserve raw segments for recovery.
     }
 
     std::wstring cleanupWarning = std::move(fallbackWarning);
@@ -191,9 +204,11 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
     const auto preservedCaptureLog = sessionDirectory /
         (partNumber ? L"video_" + partLabel + L"_capture.log" : std::wstring(L"video_capture.log"));
     ec.clear();
+    bool captureLogPreserved = true;
     if (std::filesystem::is_regular_file(captureLog, ec)) {
         std::wstring preserveError;
         if (!atomicCopyFile(captureLog, preservedCaptureLog, &preserveError)) {
+            captureLogPreserved = false;
             if (!cleanupWarning.empty()) cleanupWarning += L"; ";
             cleanupWarning += L"Could not preserve video_capture.log";
             if (!preserveError.empty()) cleanupWarning += L": " + preserveError;
@@ -210,11 +225,18 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
         }
     }
 
-    ec.clear();
-    std::filesystem::remove_all(videoDir, ec);
-    if (ec) {
+    if (captureLogPreserved) {
+        ec.clear();
+        std::filesystem::remove_all(videoDir, ec);
+        if (ec) {
+            if (!cleanupWarning.empty()) cleanupWarning += L"; ";
+            cleanupWarning += L"Could not remove raw video directory";
+        }
+    } else {
+        // Never destroy the only remaining FFmpeg capture log after a failed
+        // evidence copy, even when the finalized video itself is usable.
         if (!cleanupWarning.empty()) cleanupWarning += L"; ";
-        cleanupWarning += L"Could not remove raw video directory";
+        cleanupWarning += L"Raw recording retained to preserve capture log";
     }
 
     if (error) *error = cleanupWarning;
