@@ -43,6 +43,16 @@ int main() {
             << "raw recording evidence";
         std::ofstream(source / L"video_part_1_video_without_audio.mkv", std::ios::binary)
             << "separate recording part";
+        std::ofstream(source / L"video_part_1_capture.log", std::ios::binary)
+            << "preserved final FFmpeg log";
+        std::ofstream(source / L"recording_intervals.json", std::ios::binary)
+            << "interval report evidence";
+        std::ofstream(source / L"validation.json", std::ios::binary)
+            << "validation evidence";
+        std::ofstream(source / L"stutter_events.json", std::ios::binary)
+            << "stutter evidence";
+        std::ofstream(source / L"performance_health.json", std::ios::binary)
+            << "performance evidence";
         const auto activeLog =
             source / L"video" / L"part_1" / L"video_capture.log";
         const auto failedLog =
@@ -64,7 +74,9 @@ int main() {
                     target / L"video" / L"part_1" / L"video_capture.log") &&
                 std::filesystem::is_regular_file(
                     target / L"video" / L"part_1_failed_start_123" /
-                    L"video_capture.log")) {
+                    L"video_capture.log") &&
+                std::filesystem::is_regular_file(
+                    target / L"video_part_1_capture.log")) {
                 logsMirroredWhileRunning = true;
                 break;
             }
@@ -78,6 +90,18 @@ int main() {
               "final mirror sync must succeed");
         check(stopError.empty(),
               "successful final mirror sync must not report an error");
+        check(!std::filesystem::exists(source / L"report_bundle.zip"),
+              "test must not rely on successful report ZIP creation");
+        check(std::filesystem::is_regular_file(target / L"recording_intervals.json"),
+              "recording intervals must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"validation.json"),
+              "validation details must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"stutter_events.json"),
+              "stutter evidence must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"performance_health.json"),
+              "performance evidence must survive without report ZIP");
+        check(std::filesystem::file_size(target / L"video_part_1_capture.log") > 0,
+              "finalized FFmpeg log must survive without report ZIP");
         check(std::filesystem::file_size(
                   target / L"video" / L"part_1" / L"video_capture.log") > 0,
               "mirrored active log must contain evidence");

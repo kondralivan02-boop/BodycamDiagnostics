@@ -151,6 +151,15 @@ bool SessionMirror::syncOnce(bool finalPass) {
         L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
         L"windows_events.json",
+        L"infrastructure_evidence.json",
+        L"infrastructure_evidence.txt",
+        L"recording_intervals.json",
+        L"validation.json",
+        L"validation.txt",
+        L"performance_health.json",
+        L"performance_health.txt",
+        L"stutter_events.json",
+        L"stutter_events.txt",
         L"session_diagnostics.json",
         L"session_diagnostics.txt",
         L"session.log",
@@ -180,17 +189,25 @@ bool SessionMirror::syncOnce(bool finalPass) {
             if (!copyRelativeFile(name))
                 return false;
         }
-        std::error_code partEc;
-        for (std::filesystem::directory_iterator it(sourceSession_, partEc), end;
-             !partEc && it != end; it.increment(partEc)) {
-            if (!it->is_regular_file(partEc)) continue;
-            const auto filename = it->path().filename();
-            if (filename.wstring().rfind(L"video_part_", 0) == 0 &&
-                filename.extension() == L".mkv" && !copyRelativeFile(filename))
-                return false;
-        }
-        if (partEc) { recordFailure(partEc.value()); return false; }
     }
+
+    // FFmpeg capture logs move out of their raw part directories after mux.
+    // Mirror them throughout the session, even before the final report ZIP
+    // exists. Completed MKVs remain final-pass only, as before.
+    std::error_code partEc;
+    for (std::filesystem::directory_iterator it(sourceSession_, partEc), end;
+         !partEc && it != end; it.increment(partEc)) {
+        if (!it->is_regular_file(partEc)) continue;
+        const auto filename = it->path().filename();
+        const auto name = filename.wstring();
+        if (name.rfind(L"video_part_", 0) != 0) continue;
+
+        const bool captureLog = name.ends_with(L"_capture.log");
+        const bool completedVideo = finalPass && filename.extension() == L".mkv";
+        if ((captureLog || completedVideo) && !copyRelativeFile(filename))
+            return false;
+    }
+    if (partEc) { recordFailure(partEc.value()); return false; }
 
     const auto videoDir = sourceSession_ / L"video";
     std::error_code ec;
