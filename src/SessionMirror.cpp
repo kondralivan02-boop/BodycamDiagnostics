@@ -220,10 +220,20 @@ bool SessionMirror::syncOnce(bool finalPass) {
     for (std::filesystem::recursive_directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
         const auto& entry = *it;
         if (!entry.is_regular_file(ec)) continue;
-        if (entry.path().extension() != L".mkv") continue;
+        const bool captureLog = entry.path().filename() == L"video_capture.log";
+        if (!captureLog && entry.path().extension() != L".mkv") continue;
 
         const auto relative = std::filesystem::relative(entry.path(), sourceSession_, ec);
         if (ec) { recordFailure(ec.value()); return false; }
+
+        // Include logs from part_N and failed-start directories in periodic
+        // mirror passes. On abrupt Gizmo termination there may be no final
+        // ZIP, so these logs must not depend on successful session shutdown.
+        if (captureLog) {
+            if (!copyRelativeFile(relative)) return false;
+            continue;
+        }
+
         const auto size = entry.file_size(ec);
         if (ec || size == 0) {
             ec.clear();

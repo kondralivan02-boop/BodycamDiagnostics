@@ -43,18 +43,48 @@ int main() {
             << "raw recording evidence";
         std::ofstream(source / L"video_part_1_video_without_audio.mkv", std::ios::binary)
             << "separate recording part";
+        const auto activeLog =
+            source / L"video" / L"part_1" / L"video_capture.log";
+        const auto failedLog =
+            source / L"video" / L"part_1_failed_start_123" / L"video_capture.log";
+        std::filesystem::create_directories(failedLog.parent_path());
+        std::ofstream(activeLog, std::ios::binary) << "active FFmpeg log";
+        std::ofstream(failedLog, std::ios::binary) << "failed-start FFmpeg log";
 
         SessionMirror mirror(source, mirrorRoot);
         std::wstring startError;
         check(mirror.start(&startError),
               "mirror must start for final video sync");
+
+        // Logs must be mirrored during capture, not only by stop() or ZIP.
+        const auto target = mirror.targetPath();
+        bool logsMirroredWhileRunning = false;
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            if (std::filesystem::is_regular_file(
+                    target / L"video" / L"part_1" / L"video_capture.log") &&
+                std::filesystem::is_regular_file(
+                    target / L"video" / L"part_1_failed_start_123" /
+                    L"video_capture.log")) {
+                logsMirroredWhileRunning = true;
+                break;
+            }
+            Sleep(100);
+        }
+        check(logsMirroredWhileRunning,
+              "active and failed-start FFmpeg logs must be mirrored before stop");
+
         std::wstring stopError;
         check(mirror.stop(&stopError),
               "final mirror sync must succeed");
         check(stopError.empty(),
               "successful final mirror sync must not report an error");
-
-        const auto target = mirror.targetPath();
+        check(std::filesystem::file_size(
+                  target / L"video" / L"part_1" / L"video_capture.log") > 0,
+              "mirrored active log must contain evidence");
+        check(std::filesystem::file_size(
+                  target / L"video" / L"part_1_failed_start_123" /
+                  L"video_capture.log") > 0,
+              "mirrored failed-start log must contain evidence");
         check(std::filesystem::is_regular_file(
                   target / L"video_with_audio.mkv"),
               "final video with audio must be mirrored");
