@@ -119,35 +119,73 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
         }
     }
 
-    const auto outputName = audioAvailable ? L"video_with_audio.mkv" : L"video_without_audio.mkv";
-    const auto output = sessionDirectory /
-        (partNumber ? L"video_" + partLabel + L"_" + outputName : std::wstring(outputName));
-    const auto alternateName = (partNumber ? L"video_" + partLabel + L"_" : std::wstring{}) +
-        (audioAvailable ? L"video_without_audio.mkv" : L"video_with_audio.mkv");
-    const auto alternateOutput = sessionDirectory / alternateName;
+    const auto prefix = partNumber ? L"video_" + partLabel + L"_" : std::wstring{};
+    const auto withAudioOutput = sessionDirectory / (prefix + L"video_with_audio.mkv");
+    const auto videoOnlyOutput = sessionDirectory / (prefix + L"video_without_audio.mkv");
 
-    ec.clear(); std::filesystem::remove(output, ec);
-    ec.clear(); std::filesystem::remove(alternateOutput, ec);
+    ec.clear(); std::filesystem::remove(withAudioOutput, ec);
+    ec.clear(); std::filesystem::remove(videoOnlyOutput, ec);
 
-    std::wstring args = L"-hide_banner -loglevel error -y -f concat -safe 0 -i " + quote(concatFile.wstring()) + L" ";
-    if (audioAvailable) {
-        args += L"-i " + quote(audioFile.wstring()) + L" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -ar 48000 -af apad -shortest ";
-    } else {
-        args += L"-map 0:v:0 -c:v copy ";
+    const auto muxArgs = [&](bool addAudio, const std::filesystem::path& output) {
+        std::wstring args = L"-hide_banner -loglevel error -y -f concat -safe 0 -i " +
+            quote(concatFile.wstring()) + L" ";
+        if (addAudio) {
+            args += L"-i " + quote(audioFile.wstring()) +
+                L" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -ar 48000 -af apad -shortest ";
+        } else {
+            args += L"-map 0:v:0 -c:v copy ";
+        }
+        return args + quote(output.wstring());
+    };
+
+    auto output = audioAvailable ? withAudioOutput : videoOnlyOutput;
+    std::wstring muxError;
+    bool ok = runProcess(ffmpegExe, muxArgs(audioAvailable, output),
+                         sessionDirectory, 180000, &muxError);
+    std::wstring fallbackWarning;
+
+    // Audio is optional. If FFmpeg rejects its WAV, retry with the original
+    // video segments intact rather than losing the entire recording interval.
+    if (!ok && audioAvailable) {
+        ec.clear();
+        std::filesystem::remove(withAudioOutput, ec);
+        if (ec) {
+            std::filesystem::remove(concatFile);
+            if (error) *error = L"Audio mux failed: " + muxError +
+                L"; cannot remove incomplete audio output";
+            return false;
+        }
+
+        output = videoOnlyOutput;
+        std::wstring fallbackError;
+        ok = runProcess(ffmpegExe, muxArgs(false, output),
+                        sessionDirectory, 180000, &fallbackError);
+        if (ok) {
+            fallbackWarning = L"Audio mux failed (" + muxError +
+                L"); video saved without audio";
+        } else {
+            muxError += L"; video-only fallback failed: " + fallbackError;
+        }
     }
-    args += quote(output.wstring());
-
-    const bool ok = runProcess(ffmpegExe, args, sessionDirectory, 180000, error);
-    std::filesystem::remove(concatFile, ec);
-    if (!ok) return false;
 
     ec.clear();
-    if (!std::filesystem::is_regular_file(output, ec) || std::filesystem::file_size(output, ec) == 0) {
-        if (error) *error = audioAvailable ? L"video_with_audio.mkv was not created" : L"video_without_audio.mkv was not created";
+    std::filesystem::remove(concatFile, ec);
+    if (!ok) {
+        // Neither output may be mistaken for a valid completed recording.
+        ec.clear();
+        std::filesystem::remove(output, ec);
+        if (error) *error = muxError;
+        return false; // Keep all raw segments and the capture log for recovery.
+    }
+
+    ec.clear();
+    if (!std::filesystem::is_regular_file(output, ec) ||
+        std::filesystem::file_size(output, ec) == 0) {
+        if (error) *error = L"Finalized video is missing or empty: " + output.filename().wstring();
         return false;
     }
 
-    std::wstring cleanupWarning;
+    std::wstring cleanupWarning = std::move(fallbackWarning);
     const auto captureLog = videoDir / L"video_capture.log";
     const auto preservedCaptureLog = sessionDirectory /
         (partNumber ? L"video_" + partLabel + L"_capture.log" : std::wstring(L"video_capture.log"));
@@ -155,6 +193,7 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
     if (std::filesystem::is_regular_file(captureLog, ec)) {
         std::wstring preserveError;
         if (!atomicCopyFile(captureLog, preservedCaptureLog, &preserveError)) {
+            if (!cleanupWarning.empty()) cleanupWarning += L"; ";
             cleanupWarning += L"Could not preserve video_capture.log";
             if (!preserveError.empty()) cleanupWarning += L": " + preserveError;
         }
@@ -165,6 +204,7 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
     if (!partNumber) {
         ec.clear();
         if (!std::filesystem::remove(audioFile, ec) && ec) {
+            if (!cleanupWarning.empty()) cleanupWarning += L"; ";
             cleanupWarning += audioAvailable ? L"Could not remove game_audio.wav" : L"Could not remove incomplete game_audio.wav";
         }
     }

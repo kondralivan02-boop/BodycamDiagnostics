@@ -170,6 +170,48 @@ int wmain(int argc, wchar_t** argv) {
     check(std::filesystem::is_regular_file(root / L"video_part_4_video_without_audio.mkv"),
           "video must survive even when audio was requested but absent");
 
+    // An FFmpeg audio-mux failure must retry video-only with the raw source.
+    std::filesystem::create_directories(recordingPartDirectory(root, 5));
+    std::ofstream(recordingPartDirectory(root, 5) / L"video_00000.mkv")
+        << "fifth interval, playable video";
+    std::ofstream(recordingPartAudioPath(root, 5)) << "corrupt WAV";
+    std::ofstream(recordingPartDirectory(root, 5) / L"video_capture.log")
+        << "audio failure capture evidence";
+    std::ofstream(root / L"mux_fixture_fail_audio.txt") << "force failure";
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 5, true, &error),
+          "audio mux failure must fall back to video-only");
+    check(std::filesystem::is_regular_file(root / L"mux_fixture_audio_attempted.txt"),
+          "test must exercise and fail the audio mux attempt");
+    check(std::filesystem::is_regular_file(root / L"video_part_5_video_without_audio.mkv"),
+          "video-only fallback must be saved");
+    check(!std::filesystem::exists(root / L"video_part_5_video_with_audio.mkv"),
+          "failed audio output must not look like a valid video");
+    check(error.find(L"video saved without audio") != std::wstring::npos,
+          "audio failure must be reported as a warning");
+    check(readAll(root / L"video_part_5_capture.log") ==
+              "audio failure capture evidence",
+          "capture evidence must be preserved after fallback");
+    check(!std::filesystem::exists(recordingPartDirectory(root, 5)),
+          "raw video should only be removed after successful fallback");
+    std::filesystem::remove(root / L"mux_fixture_fail_audio.txt", ec);
+
+    // When both mux attempts fail, keep the original raw segments for recovery.
+    std::filesystem::create_directories(recordingPartDirectory(root, 6));
+    std::ofstream(recordingPartDirectory(root, 6) / L"video_00000.mkv")
+        << "sixth interval raw video";
+    std::ofstream(recordingPartAudioPath(root, 6)) << "unusable audio";
+    std::ofstream(root / L"mux_fixture_fail_all.txt") << "force all failure";
+    error.clear();
+    check(!finalizeRecordingPart(fixture, root, 6, true, &error),
+          "failed audio and video mux must return failure");
+    check(std::filesystem::is_regular_file(
+              recordingPartDirectory(root, 6) / L"video_00000.mkv"),
+          "raw video must survive failed fallback");
+    check(error.find(L"video-only fallback failed") != std::wstring::npos,
+          "both failed mux attempts must be diagnosed");
+    std::filesystem::remove(root / L"mux_fixture_fail_all.txt", ec);
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
 }

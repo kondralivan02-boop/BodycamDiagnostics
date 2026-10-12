@@ -27,6 +27,22 @@ int wmain(int argc, wchar_t** argv) {
         }
     }
 
+    bool includesAudio = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::wstring(argv[i]) == L"1:a:0") {
+            includesAudio = true;
+            break;
+        }
+    }
+
+    // The fixture deliberately fails audio muxing to exercise recovery.
+    if (includesAudio && std::filesystem::exists(L"mux_fixture_fail_audio.txt")) {
+        std::ofstream(L"mux_fixture_audio_attempted.txt") << "audio mux attempted";
+        return 17;
+    }
+    if (std::filesystem::exists(L"mux_fixture_fail_all.txt"))
+        return 18;
+
     const std::filesystem::path output = argv[argc - 1];
     std::ofstream out(output, std::ios::binary | std::ios::trunc);
     if (!out)
