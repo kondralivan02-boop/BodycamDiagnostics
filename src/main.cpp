@@ -96,6 +96,7 @@ HFONT gButtonFont{};
 
 HBRUSH gBackgroundBrush{};
 HBRUSH gPanelBrush{};
+HBRUSH gSidebarBrush{};
 
 std::unique_ptr<SessionManager> gSession;
 std::unique_ptr<PresentMonController> gPresentMon;
@@ -1681,6 +1682,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         gBackgroundBrush = CreateSolidBrush(COLOR_BG);
         gPanelBrush = CreateSolidBrush(COLOR_PANEL);
+        gSidebarBrush = CreateSolidBrush(COLOR_SIDEBAR);
 
         applyDarkWindowChrome(hwnd);
         createControls(hwnd);
@@ -1697,7 +1699,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_GETMINMAXINFO: {
         auto* size = reinterpret_cast<MINMAXINFO*>(lp);
-        size->ptMinTrackSize = POINT{1010, 725};
+        size->ptMinTrackSize = POINT{1010, 765};
         return 0;
     }
 
@@ -1755,6 +1757,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetTextColor(dc, COLOR_TEXT);
         SetBkColor(dc, COLOR_BG);
         return reinterpret_cast<INT_PTR>(gBackgroundBrush);
+    }
+
+    case WM_CTLCOLORBTN: {
+        HDC dc = reinterpret_cast<HDC>(wp);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, COLOR_TEXT);
+        SetBkColor(dc, COLOR_SIDEBAR);
+        return reinterpret_cast<INT_PTR>(gSidebarBrush);
     }
 
     case WM_CTLCOLOREDIT:
@@ -1841,6 +1851,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             DeleteObject(gPanelBrush);
             gPanelBrush = nullptr;
         }
+        if (gSidebarBrush) {
+            DeleteObject(gSidebarBrush);
+            gSidebarBrush = nullptr;
+        }
 
         destroyFonts();
         PostQuitMessage(0);
@@ -1881,7 +1895,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
         0,
         className,
         L"Bodycam Diagnostics  |  Performance Lab",
-        WS_OVERLAPPEDWINDOW,
+        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT,
         1120, 795,
         nullptr, nullptr,
