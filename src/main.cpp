@@ -1221,8 +1221,15 @@ void paintDashboard(HDC dc, int width, int height) {
 
     drawTextLine(dc, L"Панель диагностики", RECT{x, 22, right - 166, 62},
                  gTitleFont, COLOR_TEXT);
-    drawTextLine(dc, L"Bodycam / DLSS / Frame Generation",
-        RECT{x, 65, right - 80, 87}, gSmallFont, COLOR_MUTED);
+    // The dropdown is compact, so repeat its full selected label in the
+    // wide header. Never change the recorded preset string for visual reasons.
+    wchar_t selectedPreset[192]{};
+    if (gPreset)
+        GetWindowTextW(gPreset, selectedPreset,
+                       static_cast<int>(std::size(selectedPreset)));
+    drawTextLine(dc, selectedPreset[0] ? selectedPreset
+                                      : L"Bodycam / DLSS / Frame Generation",
+        RECT{x, 65, right - 35, 87}, gSmallFont, COLOR_MUTED);
 
     drawCard(dc, RECT{right - 143, 31, right, 68},
              gRunning ? RGB(22, 54, 49) : COLOR_PANEL);
@@ -1777,6 +1784,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_COMMAND:
         switch (LOWORD(wp)) {
+        case ID_PRESET:
+            if (HIWORD(wp) == CBN_SELCHANGE)
+                InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+
         case ID_TOGGLE:
             toggleSession();
             return 0;
