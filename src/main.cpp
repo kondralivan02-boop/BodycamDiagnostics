@@ -4,6 +4,7 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -55,17 +56,24 @@ constexpr int ID_TIMER = 1;
 constexpr int HOTKEY_TOGGLE = 2001;
 constexpr int HOTKEY_RECORD = 2002;
 
-constexpr COLORREF COLOR_BG = RGB(13, 16, 22);
-constexpr COLORREF COLOR_PANEL = RGB(22, 27, 36);
-constexpr COLORREF COLOR_PANEL_HOVER = RGB(29, 35, 46);
-constexpr COLORREF COLOR_BORDER = RGB(48, 57, 72);
-constexpr COLORREF COLOR_TEXT = RGB(235, 239, 246);
-constexpr COLORREF COLOR_MUTED = RGB(143, 154, 173);
-constexpr COLORREF COLOR_ACCENT = RGB(78, 139, 255);
-constexpr COLORREF COLOR_ACCENT_PRESSED = RGB(62, 118, 225);
-constexpr COLORREF COLOR_STOP = RGB(168, 72, 82);
-constexpr COLORREF COLOR_DISABLED = RGB(53, 59, 70);
-constexpr COLORREF COLOR_OK = RGB(76, 207, 133);
+constexpr COLORREF COLOR_BG = RGB(9, 13, 22);
+constexpr COLORREF COLOR_PANEL = RGB(19, 27, 40);
+constexpr COLORREF COLOR_PANEL_HOVER = RGB(29, 40, 57);
+constexpr COLORREF COLOR_BORDER = RGB(43, 57, 74);
+constexpr COLORREF COLOR_TEXT = RGB(239, 245, 250);
+constexpr COLORREF COLOR_MUTED = RGB(146, 161, 179);
+constexpr COLORREF COLOR_ACCENT = RGB(62, 212, 197);
+constexpr COLORREF COLOR_ACCENT_PRESSED = RGB(32, 169, 159);
+constexpr COLORREF COLOR_STOP = RGB(211, 86, 106);
+constexpr COLORREF COLOR_DISABLED = RGB(40, 49, 62);
+constexpr COLORREF COLOR_OK = RGB(93, 217, 158);
+constexpr COLORREF COLOR_SIDEBAR = RGB(15, 21, 33);
+constexpr COLORREF COLOR_AMBER = RGB(244, 182, 91);
+constexpr int kSidebarWidth = 246;
+constexpr int kContentTop = 104;
+constexpr int kMetricsTop = 334;
+constexpr int kUtilitiesTop = 485;
+constexpr int kLogTop = 549;
 
 HWND gMain{};
 HWND gPreset{};
@@ -101,6 +109,8 @@ RecordingTimeline gRecording;
 DiagnosticsOverlay gOverlay;
 FullscreenOverlayBridge gFullscreenOverlay;
 LiveFrameMetrics gLiveFrames;
+LiveFrameSnapshot gDashboardFrame;
+TelemetrySnapshot gDashboardTelemetry;
 bool gFullscreenHudActive = false;
 
 std::filesystem::path gLastSessionPath;
@@ -215,25 +225,34 @@ bool copyTextToClipboard(HWND owner, const std::wstring& text) {
 void updateControlsForRunningState() {
     if (!gToggle) return;
 
-    SetWindowTextW(gToggle, gRunning ? L"Остановить тест" : L"Начать тест");
+    SetWindowTextW(gToggle, gRunning ? L"■  ОСТАНОВИТЬ ТЕСТ  · F9"
+                                    : L"▶  НАЧАТЬ ТЕСТ  · F9");
     if (gRecord) {
-        SetWindowTextW(gRecord, gRecorder && gRecorder->running() ? L"Остановить запись видео" : L"Начать запись видео");
+        SetWindowTextW(
+            gRecord, gRecorder && gRecorder->running()
+                ? L"■  ОСТАНОВИТЬ ВИДЕО  · F8"
+                : L"●  ЗАПИСАТЬ ВИДЕО  · F8");
         EnableWindow(gRecord, gRunning);
-        InvalidateRect(gRecord, nullptr, TRUE);
+        InvalidateRect(gRecord, nullptr, FALSE);
     }
     if (gVideoStatus) {
-        const wchar_t* label = L"Видео: выключено";
-        if (gRecording.state() == RecordingState::Starting) label = L"Видео: запуск";
-        if (gRecording.state() == RecordingState::Recording) label = L"Видео: запись";
-        if (gRecording.state() == RecordingState::Lost) label = L"Видео: ошибка";
-        if (gRecording.state() == RecordingState::Stopped) label = L"Видео: остановлено";
+        const wchar_t* label = L"ВИДЕО  ·  ВЫКЛ";
+        if (gRecording.state() == RecordingState::Starting) label = L"ВИДЕО  ·  ЗАПУСК";
+        if (gRecording.state() == RecordingState::Recording) label = L"ВИДЕО  ·  REC";
+        if (gRecording.state() == RecordingState::Lost) label = L"ВИДЕО  ·  ОШИБКА";
+        if (gRecording.state() == RecordingState::Stopped) label = L"ВИДЕО  ·  СТОП";
         SetWindowTextW(gVideoStatus, label);
     }
-    EnableWindow(gPreset, gRunning ? FALSE : TRUE);
+    EnableWindow(gPreset, !gRunning);
     if (gGizmo) EnableWindow(gGizmo, !gRunning);
     EnableWindow(gOpenSession, !gRunning && !gLastSessionPath.empty());
     EnableWindow(gCopyReport, !gRunning && !gLastReportPath.empty());
-    InvalidateRect(gToggle, nullptr, TRUE);
+    if (!gRunning) {
+        gDashboardFrame = {};
+        gDashboardTelemetry = {};
+    }
+    InvalidateRect(gToggle, nullptr, FALSE);
+    if (gMain) InvalidateRect(gMain, nullptr, FALSE);
 }
 
 void refreshGameState() {
@@ -1055,27 +1074,23 @@ void copyLastReportPath(HWND owner) {
 
 void createFonts() {
     gTitleFont = CreateFontW(
-        -24, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        -29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
     gSubtitleFont = CreateFontW(
-        -12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        -13, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
     gBodyFont = CreateFontW(
-        -15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        -16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
     gSmallFont = CreateFontW(
-        -13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        -14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-
     gButtonFont = CreateFontW(
-        -14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        -15, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 }
@@ -1103,53 +1118,196 @@ void applyDarkWindowChrome(HWND hwnd) {
     DwmSetWindowAttribute(hwnd, 33, &rounded, sizeof(rounded));
 }
 
-void paintMainWindow(HWND hwnd) {
-    PAINTSTRUCT ps{};
-    HDC dc = BeginPaint(hwnd, &ps);
+// Dashboard rendering uses GDI only. No browser runtime, GPU hooks or extra
+// processes are needed, including in Gizmo compatibility mode.
+void fillRegion(HDC dc, const RECT& rect, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    FillRect(dc, &rect, brush);
+    DeleteObject(brush);
+}
 
-    RECT client{};
-    GetClientRect(hwnd, &client);
-
-    FillRect(dc, &client, gBackgroundBrush);
-    SetBkMode(dc, TRANSPARENT);
-
-    SelectObject(dc, gTitleFont);
-    SetTextColor(dc, COLOR_TEXT);
-    RECT titleRect{20, 10, 600, 42};
-    DrawTextW(dc, L"Bodycam Diagnostics", -1, &titleRect,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-    SelectObject(dc, gSmallFont);
-    SetTextColor(dc, COLOR_MUTED);
-    RECT presetLabel{20, 52, 600, 72};
-    DrawTextW(dc, L"ПРЕСЕТ", -1, &presetLabel,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
-    HBRUSH panel = CreateSolidBrush(COLOR_PANEL);
-    HPEN border = CreatePen(PS_SOLID, 1, COLOR_BORDER);
-
-    auto oldBrush = SelectObject(dc, panel);
-    auto oldPen = SelectObject(dc, border);
-
-    RoundRect(dc, 20, 105, 600, 147, 10, 10);
-    RoundRect(dc, 20, 304, 600, 406, 10, 10);
-
+void drawCard(HDC dc, const RECT& rect, COLORREF color = COLOR_PANEL) {
+    HBRUSH brush = CreateSolidBrush(color);
+    HPEN pen = CreatePen(PS_SOLID, 1, COLOR_BORDER);
+    const auto oldBrush = SelectObject(dc, brush);
+    const auto oldPen = SelectObject(dc, pen);
+    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, 18, 18);
     SelectObject(dc, oldPen);
     SelectObject(dc, oldBrush);
-    DeleteObject(border);
-    DeleteObject(panel);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
 
-    HBRUSH dot = CreateSolidBrush(gRunning ? COLOR_OK : COLOR_ACCENT);
-    RECT dotRect{34, 122, 42, 130};
-    FillRect(dc, &dotRect, dot);
-    DeleteObject(dot);
+void drawTextLine(HDC dc, const wchar_t* text, RECT rect, HFONT font,
+                  COLORREF color, UINT format = DT_LEFT | DT_VCENTER |
+                                                  DT_SINGLELINE | DT_END_ELLIPSIS) {
+    if (!font) return;
+    const auto oldFont = SelectObject(dc, font);
+    SetTextColor(dc, color);
+    SetBkMode(dc, TRANSPARENT);
+    DrawTextW(dc, text, -1, &rect, format);
+    SelectObject(dc, oldFont);
+}
 
-    SelectObject(dc, gSmallFont);
-    SetTextColor(dc, COLOR_MUTED);
-    RECT logLabel{20, 282, 600, 300};
-    DrawTextW(dc, L"ЖУРНАЛ", -1, &logLabel,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+void drawCircle(HDC dc, int x, int y, int diameter, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    const auto oldBrush = SelectObject(dc, brush);
+    const auto oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
+    Ellipse(dc, x, y, x + diameter, y + diameter);
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(brush);
+}
 
+std::wstring compactValue(double value, int decimals = 0) {
+    std::wstringstream out;
+    out << std::fixed << std::setprecision(decimals) << value;
+    return out.str();
+}
+
+void paintMetric(HDC dc, const RECT& rect, const wchar_t* label,
+                 const std::wstring& value, const wchar_t* hint,
+                 COLORREF valueColor) {
+    drawCard(dc, rect);
+    drawTextLine(dc, label,
+        RECT{rect.left + 18, rect.top + 15, rect.right - 10, rect.top + 38},
+        gSubtitleFont, COLOR_MUTED);
+    drawTextLine(dc, value.c_str(),
+        RECT{rect.left + 18, rect.top + 43, rect.right - 10, rect.top + 95},
+        gTitleFont, valueColor);
+    drawTextLine(dc, hint,
+        RECT{rect.left + 18, rect.bottom - 32, rect.right - 10, rect.bottom - 12},
+        gSmallFont, COLOR_MUTED);
+}
+
+void paintDashboard(HDC dc, int width, int height) {
+    const RECT all{0, 0, width, height};
+    fillRegion(dc, all, COLOR_BG);
+    fillRegion(dc, RECT{0, 0, kSidebarWidth, height}, COLOR_SIDEBAR);
+    fillRegion(dc, RECT{kSidebarWidth - 1, 0, kSidebarWidth, height}, COLOR_BORDER);
+    fillRegion(dc, RECT{0, 0, 5, height}, COLOR_ACCENT);
+
+    // Identity / navigation sidebar.
+    drawCard(dc, RECT{23, 25, 66, 68}, COLOR_ACCENT);
+    drawTextLine(dc, L"BD", RECT{25, 27, 65, 66},
+                 gButtonFont, COLOR_BG, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    drawTextLine(dc, L"BODYCAM", RECT{78, 25, 221, 50},
+                 gSubtitleFont, COLOR_TEXT);
+    drawTextLine(dc, L"DIAGNOSTICS", RECT{78, 45, 232, 68},
+                 gSmallFont, COLOR_MUTED);
+
+    drawTextLine(dc, L"РАБОЧАЯ ПАНЕЛЬ", RECT{23, 102, 226, 125},
+                 gSubtitleFont, COLOR_ACCENT);
+    drawTextLine(dc, L"01  /  МОНИТОРИНГ", RECT{23, 143, 226, 166},
+                 gSmallFont, COLOR_TEXT);
+    fillRegion(dc, RECT{23, 177, 221, 178}, COLOR_BORDER);
+    drawTextLine(dc, L"КОНФИГУРАЦИЯ ТЕСТА", RECT{23, 222, 225, 249},
+                 gSubtitleFont, COLOR_MUTED);
+    drawTextLine(dc, L"СОВМЕСТИМОСТЬ", RECT{23, 322, 222, 341},
+                 gSubtitleFont, COLOR_MUTED);
+
+    const COLORREF sidebarIndicator = gRunning ? COLOR_OK : COLOR_MUTED;
+    drawCircle(dc, 23, height - 126, 9, sidebarIndicator);
+    drawTextLine(dc, gRunning ? L"ДИАГНОСТИКА АКТИВНА" : L"ОЖИДАНИЕ ЗАПУСКА",
+        RECT{40, height - 136, 225, height - 111},
+        gSubtitleFont, gRunning ? COLOR_OK : COLOR_MUTED);
+    drawTextLine(dc, L"LOCAL  /  WIN64", RECT{23, height - 98, 224, height - 78},
+                 gSmallFont, COLOR_MUTED);
+
+    const int x = kSidebarWidth + 32;
+    const int right = width - 32;
+    const int available = right - x;
+
+    drawTextLine(dc, L"Панель диагностики", RECT{x, 22, right - 166, 62},
+                 gTitleFont, COLOR_TEXT);
+    drawTextLine(dc, L"Bodycam / DLSS / Frame Generation",
+        RECT{x, 65, right - 80, 87}, gSmallFont, COLOR_MUTED);
+
+    drawCard(dc, RECT{right - 143, 31, right, 68},
+             gRunning ? RGB(22, 54, 49) : COLOR_PANEL);
+    drawCircle(dc, right - 130, 46, 9, gRunning ? COLOR_OK : COLOR_MUTED);
+    drawTextLine(dc, gRunning ? L"LIVE SESSION" : L"STANDBY",
+        RECT{right - 113, 35, right - 7, 64},
+        gSubtitleFont, gRunning ? COLOR_OK : COLOR_MUTED);
+
+    // Session state and recording state remain ordinary Win32 STATIC controls.
+    drawCard(dc, RECT{x, kContentTop, right, 229});
+    drawCircle(dc, x + 22, kContentTop + 33, 12,
+        gRunning ? COLOR_OK : COLOR_ACCENT);
+    drawTextLine(dc, L"СТАТУС ТЕСТА",
+        RECT{x + 44, kContentTop + 15, right - 20, kContentTop + 44},
+        gSubtitleFont, COLOR_MUTED);
+    drawTextLine(dc, L"УПРАВЛЕНИЕ  /  F9: ТЕСТ     F8: ВИДЕО",
+        RECT{x + 22, kContentTop + 92, right - 25, kContentTop + 115},
+        gSmallFont, COLOR_MUTED);
+
+    drawTextLine(dc, L"ПОКАЗАТЕЛИ В РЕАЛЬНОМ ВРЕМЕНИ",
+        RECT{x, 306, right, 332}, gSubtitleFont, COLOR_MUTED);
+
+    const int gap = 12;
+    const int cell = (available - 3 * gap) / 4;
+    const RECT metric1{x, kMetricsTop, x + cell, kMetricsTop + 135};
+    const RECT metric2{x + cell + gap, kMetricsTop,
+                       x + 2 * cell + gap, kMetricsTop + 135};
+    const RECT metric3{x + 2 * (cell + gap), kMetricsTop,
+                       x + 3 * cell + 2 * gap, kMetricsTop + 135};
+    const RECT metric4{x + 3 * (cell + gap), kMetricsTop,
+                       right, kMetricsTop + 135};
+
+    paintMetric(dc, metric1, L"FPS",
+        gDashboardFrame.valid ? compactValue(gDashboardFrame.fps) : L"—",
+        L"частота кадров", COLOR_ACCENT);
+    paintMetric(dc, metric2, L"FRAMETIME",
+        gDashboardFrame.valid
+            ? compactValue(gDashboardFrame.frameTimeMs, 1) + L" ms" : L"—",
+        L"время кадра", COLOR_TEXT);
+    paintMetric(dc, metric3, L"1% LOW",
+        gDashboardFrame.valid
+            ? compactValue(gDashboardFrame.onePercentLowFps) : L"—",
+        L"плавность", COLOR_OK);
+    paintMetric(dc, metric4, L"GPU LOAD",
+        gDashboardTelemetry.gpuValid
+            ? std::to_wstring(gDashboardTelemetry.gpuUtilPct) + L"%" : L"—",
+        L"загрузка видеокарты", COLOR_AMBER);
+
+    // Persistent log occupies remaining vertical space on resized windows.
+    drawCard(dc, RECT{x, kLogTop, right, height - 26});
+    drawCircle(dc, x + 19, kLogTop + 20, 8, COLOR_ACCENT);
+    drawTextLine(dc, L"ЖУРНАЛ СОБЫТИЙ",
+        RECT{x + 36, kLogTop + 8, right - 20, kLogTop + 40},
+        gSubtitleFont, COLOR_TEXT);
+    drawTextLine(dc, L"События теста и сообщения диагностики",
+        RECT{x + 20, height - 62, right - 20, height - 36},
+        gSmallFont, COLOR_MUTED);
+}
+
+void paintMainWindow(HWND hwnd) {
+    PAINTSTRUCT ps{};
+    HDC screen = BeginPaint(hwnd, &ps);
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    const int width = client.right - client.left;
+    const int height = client.bottom - client.top;
+    if (width <= 0 || height <= 0) {
+        EndPaint(hwnd, &ps);
+        return;
+    }
+
+    HDC memory = CreateCompatibleDC(screen);
+    HBITMAP bitmap = memory ? CreateCompatibleBitmap(screen, width, height) : nullptr;
+    if (!memory || !bitmap) {
+        if (bitmap) DeleteObject(bitmap);
+        if (memory) DeleteDC(memory);
+        FillRect(screen, &client, gBackgroundBrush);
+        EndPaint(hwnd, &ps);
+        return;
+    }
+    const auto oldBitmap = SelectObject(memory, bitmap);
+    paintDashboard(memory, width, height);
+    BitBlt(screen, 0, 0, width, height, memory, 0, 0, SRCCOPY);
+    SelectObject(memory, oldBitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory);
     EndPaint(hwnd, &ps);
 }
 
@@ -1159,51 +1317,48 @@ void drawButton(const DRAWITEMSTRUCT* dis) {
     const bool disabled = (dis->itemState & ODS_DISABLED) != 0;
     const bool pressed = (dis->itemState & ODS_SELECTED) != 0;
     const bool primary = dis->hwndItem == gToggle;
+    const bool recording = gRecorder && gRecorder->running();
 
     COLORREF fill = COLOR_PANEL_HOVER;
-    COLORREF text = COLOR_TEXT;
-    COLORREF border = COLOR_BORDER;
+    COLORREF textColor = COLOR_TEXT;
+    COLORREF stroke = COLOR_BORDER;
 
     if (disabled) {
         fill = COLOR_DISABLED;
-        text = RGB(112, 121, 136);
-        border = COLOR_DISABLED;
+        textColor = COLOR_MUTED;
+        stroke = COLOR_DISABLED;
     } else if (primary) {
         fill = gRunning ? COLOR_STOP : COLOR_ACCENT;
-        if (pressed)
-            fill = gRunning ? RGB(145, 59, 69) : COLOR_ACCENT_PRESSED;
-        border = fill;
-    } else if (pressed) {
-        fill = RGB(36, 43, 56);
+        textColor = COLOR_BG;
+        stroke = fill;
+    } else if (dis->hwndItem == gRecord) {
+        fill = recording ? COLOR_STOP : RGB(64, 45, 34);
+        stroke = recording ? COLOR_STOP : COLOR_AMBER;
+        textColor = recording ? COLOR_TEXT : COLOR_AMBER;
     }
+    if (pressed && !disabled)
+        fill = primary ? COLOR_ACCENT_PRESSED : RGB(36, 52, 66);
 
     HBRUSH brush = CreateSolidBrush(fill);
-    HPEN pen = CreatePen(PS_SOLID, 1, border);
-
+    HPEN pen = CreatePen(PS_SOLID, 1, stroke);
     const auto oldBrush = SelectObject(dis->hDC, brush);
     const auto oldPen = SelectObject(dis->hDC, pen);
-
     RECT r = dis->rcItem;
-    RoundRect(dis->hDC, r.left, r.top, r.right, r.bottom, 12, 12);
-
+    RoundRect(dis->hDC, r.left, r.top, r.right, r.bottom, 16, 16);
     SelectObject(dis->hDC, oldPen);
     SelectObject(dis->hDC, oldBrush);
     DeleteObject(pen);
     DeleteObject(brush);
 
-    wchar_t textBuffer[128]{};
-    GetWindowTextW(dis->hwndItem, textBuffer, static_cast<int>(std::size(textBuffer)));
-
+    wchar_t caption[160]{};
+    GetWindowTextW(dis->hwndItem, caption,
+                   static_cast<int>(std::size(caption)));
     SetBkMode(dis->hDC, TRANSPARENT);
-    SetTextColor(dis->hDC, text);
-    SelectObject(dis->hDC, gButtonFont);
-
-    DrawTextW(
-        dis->hDC,
-        textBuffer,
-        -1,
-        &r,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SetTextColor(dis->hDC, textColor);
+    const auto oldFont = SelectObject(dis->hDC, gButtonFont);
+    DrawTextW(dis->hDC, caption, -1, &r,
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    SelectObject(dis->hDC, oldFont);
 }
 
 void drawPresetItem(const DRAWITEMSTRUCT* dis) {
@@ -1252,19 +1407,53 @@ void drawPresetItem(const DRAWITEMSTRUCT* dis) {
     }
 }
 
+void layoutControls(HWND hwnd) {
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    const int height = client.bottom;
+    const int x = kSidebarWidth + 32;
+    const int right = client.right - 32;
+    const int available = right - x;
+    if (available <= 0) return;
+
+    const int sideButtonWidth = kSidebarWidth - 46;
+    if (gPreset) MoveWindow(gPreset, 23, 254, sideButtonWidth, 250, TRUE);
+    if (gGizmo) MoveWindow(gGizmo, 23, 350, sideButtonWidth, 42, TRUE);
+    if (gHelp) MoveWindow(gHelp, 23, height - 69, sideButtonWidth, 40, TRUE);
+
+    if (gStatus) MoveWindow(gStatus, x + 23, kContentTop + 45,
+                            available - 248, 37, TRUE);
+    if (gVideoStatus) MoveWindow(gVideoStatus, right - 200,
+                                 kContentTop + 45, 173, 37, TRUE);
+    const int actionGap = 12;
+    const int actionWidth = (available - actionGap) / 2;
+    if (gToggle) MoveWindow(gToggle, x, 244, actionWidth, 54, TRUE);
+    if (gRecord) MoveWindow(gRecord, x + actionWidth + actionGap, 244,
+                            available - actionWidth - actionGap, 54, TRUE);
+    if (gOpenSession) MoveWindow(gOpenSession, x, kUtilitiesTop,
+                                actionWidth, 46, TRUE);
+    if (gCopyReport) MoveWindow(gCopyReport,
+                               x + actionWidth + actionGap, kUtilitiesTop,
+                               available - actionWidth - actionGap, 46, TRUE);
+
+    if (gLog) MoveWindow(gLog, x + 19, kLogTop + 45,
+                         available - 38, (std::max)(90, height - kLogTop - 115),
+                         TRUE);
+    InvalidateRect(hwnd, nullptr, FALSE);
+}
+
 void createControls(HWND hwnd) {
     gPreset = CreateWindowExW(
         0, L"COMBOBOX", nullptr,
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
-        20, 72, 580, 220,
+        0, 0, 200, 250,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_PRESET)), nullptr, nullptr);
 
     SendMessageW(gPreset, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
-    SendMessageW(gPreset, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), 28);
-    SendMessageW(gPreset, CB_SETITEMHEIGHT, 0, 28);
+    SendMessageW(gPreset, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), 34);
+    SendMessageW(gPreset, CB_SETITEMHEIGHT, 0, 34);
     SetWindowTheme(gPreset, L"DarkMode_Explorer", nullptr);
-
     SendMessageW(gPreset, CB_ADDSTRING, 0,
         reinterpret_cast<LPARAM>(L"DLSS Quality + Frame Generation OFF"));
     SendMessageW(gPreset, CB_ADDSTRING, 0,
@@ -1278,63 +1467,63 @@ void createControls(HWND hwnd) {
     gStatus = CreateWindowExW(
         0, L"STATIC", L"Ожидание Bodycam...",
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
-        52, 111, 528, 30,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_STATUS)), nullptr, nullptr);
+        0, 0, 150, 30, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_STATUS)), nullptr, nullptr);
     SendMessageW(gStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
 
-    gToggle = CreateWindowW(
-        L"BUTTON", L"Начать тест",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        20, 159, 180, 38,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_TOGGLE)), nullptr, nullptr);
-
-    gOpenSession = CreateWindowW(
-        L"BUTTON", L"Открыть сессию",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        210, 159, 180, 38,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_OPEN_SESSION)), nullptr, nullptr);
-
-    gCopyReport = CreateWindowW(
-        L"BUTTON", L"Копировать ZIP",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        400, 159, 200, 38,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_COPY_REPORT)), nullptr, nullptr);
-
-    gRecord = CreateWindowW(
-        L"BUTTON", L"Начать запись видео",
-        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        20, 205, 250, 38,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RECORD)), nullptr, nullptr);
     gVideoStatus = CreateWindowW(
-        L"STATIC", L"Видео: выключено",
-        WS_CHILD | WS_VISIBLE | SS_LEFT | SS_CENTERIMAGE,
-        286, 205, 300, 38,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VIDEO_STATUS)), nullptr, nullptr);
-    SendMessageW(gVideoStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
-    EnableWindow(gRecord, FALSE);
+        L"STATIC", L"ВИДЕО  ·  ВЫКЛ",
+        WS_CHILD | WS_VISIBLE | SS_RIGHT | SS_CENTERIMAGE,
+        0, 0, 150, 30, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_VIDEO_STATUS)), nullptr, nullptr);
+    SendMessageW(gVideoStatus, WM_SETFONT, reinterpret_cast<WPARAM>(gSubtitleFont), TRUE);
 
-    gGizmo = CreateWindowW(L"BUTTON", L"Режим совместимости с Gizmo",
-        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-        20, 252, 350, 26,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_GIZMO)), nullptr, nullptr);
-    SendMessageW(gGizmo, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
-    gHelp = CreateWindowW(L"BUTTON", L"Справка",
+    gToggle = CreateWindowW(
+        L"BUTTON", L"▶  НАЧАТЬ ТЕСТ  · F9",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        460, 249, 140, 31,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_HELP)), nullptr, nullptr);
+        0, 0, 200, 54, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_TOGGLE)), nullptr, nullptr);
+    gRecord = CreateWindowW(
+        L"BUTTON", L"●  ЗАПИСАТЬ ВИДЕО  · F8",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        0, 0, 200, 54, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_RECORD)), nullptr, nullptr);
+    gOpenSession = CreateWindowW(
+        L"BUTTON", L"ОТКРЫТЬ ПОСЛЕДНЮЮ СЕССИЮ",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        0, 0, 200, 46, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_OPEN_SESSION)), nullptr, nullptr);
+    gCopyReport = CreateWindowW(
+        L"BUTTON", L"КОПИРОВАТЬ ПУТЬ К ZIP",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        0, 0, 200, 46, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_COPY_REPORT)), nullptr, nullptr);
+
+    gGizmo = CreateWindowW(L"BUTTON", L"Gizmo / совместимость",
+        WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        0, 0, 200, 42, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_GIZMO)), nullptr, nullptr);
+    SendMessageW(gGizmo, WM_SETFONT, reinterpret_cast<WPARAM>(gBodyFont), TRUE);
+    SetWindowTheme(gGizmo, L"DarkMode_Explorer", nullptr);
+
+    gHelp = CreateWindowW(L"BUTTON", L"СПРАВКА",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        0, 0, 200, 40, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_HELP)), nullptr, nullptr);
 
     gLog = CreateWindowExW(
         0, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | WS_VSCROLL |
         ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-        32, 314, 556, 82,
-        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), nullptr, nullptr);
-
+        0, 0, 200, 150, hwnd,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_LOG)), nullptr, nullptr);
     SendMessageW(gLog, WM_SETFONT, reinterpret_cast<WPARAM>(gSmallFont), TRUE);
     SetWindowTheme(gLog, L"DarkMode_Explorer", nullptr);
 
+    EnableWindow(gRecord, FALSE);
     EnableWindow(gOpenSession, FALSE);
     EnableWindow(gCopyReport, FALSE);
+    layoutControls(hwnd);
 }
 
 void updateLiveOverlay() {
@@ -1473,6 +1662,10 @@ void updateLiveOverlay() {
     const TelemetrySnapshot telemetry =
         gTelemetry ? gTelemetry->latest() : TelemetrySnapshot{};
 
+    gDashboardFrame = frame;
+    gDashboardTelemetry = telemetry;
+    if (gMain) InvalidateRect(gMain, nullptr, FALSE);
+
     if (gFullscreenHudActive) {
         gFullscreenOverlay.publish(gGamePid, frame, telemetry);
     } else {
@@ -1501,6 +1694,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         appendUiLog(L"Приложение готово");
         return 0;
+
+    case WM_GETMINMAXINFO: {
+        auto* size = reinterpret_cast<MINMAXINFO*>(lp);
+        size->ptMinTrackSize = POINT{1010, 725};
+        return 0;
+    }
+
+    case WM_SIZE:
+        if (gPreset) layoutControls(hwnd);
+        return 0;
+
+    case WM_ERASEBKGND:
+        // The dashboard is drawn into one off-screen bitmap during WM_PAINT.
+        return 1;
 
     case WM_PAINT:
         paintMainWindow(hwnd);
@@ -1673,10 +1880,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
     HWND hwnd = CreateWindowExW(
         0,
         className,
-        L"Bodycam Diagnostics",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+        L"Bodycam Diagnostics  |  Performance Lab",
+        WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        628, 462,
+        1120, 795,
         nullptr, nullptr,
         hInstance, nullptr);
 
