@@ -1203,6 +1203,9 @@ void paintDashboard(HDC dc, int width, int height) {
 
     // Thin separators, not separate boxed panels.
     fillRegion(dc, RECT{left, 62, right, 63}, COLOR_BORDER);
+    drawTextLine(dc, L"ПРЕСЕТ",
+        RECT{left + 4, kConfigTop, 102, kConfigTop + 35},
+        gSubtitleFont, COLOR_MUTED);
     fillRegion(dc, RECT{left, 122, right, 123}, COLOR_BORDER);
     fillRegion(dc, RECT{left, 252, right, 253}, COLOR_BORDER);
     fillRegion(dc, RECT{left, 365, right, 366}, COLOR_BORDER);
@@ -1352,10 +1355,15 @@ void drawButton(const DRAWITEMSTRUCT* dis) {
         SelectObject(dis->hDC, oldBrush);
         DeleteObject(pen);
         DeleteObject(brush);
-    } else if (!disabled && (pressed || (dis->itemState & ODS_FOCUS))) {
-        fillRegion(dis->hDC,
-            RECT{r.left + 10, r.bottom - 3, r.right - 10, r.bottom - 1},
-            COLOR_MUTED);
+    } else {
+        // Owner-drawn nav buttons must paint their own background. Otherwise
+        // focus/hover redraws can leave stale characters on the button DC.
+        fillRegion(dis->hDC, r, COLOR_BG);
+        if (!disabled && (pressed || (dis->itemState & ODS_FOCUS))) {
+            fillRegion(dis->hDC,
+                RECT{r.left + 10, r.bottom - 3, r.right - 10, r.bottom - 1},
+                COLOR_MUTED);
+        }
     }
 
     wchar_t caption[160]{};
@@ -1451,7 +1459,7 @@ void layoutControls(HWND hwnd) {
     if (gStatus) MoveWindow(gStatus, left + col * 2 + 25,
                             kActionsTop + 29, col - 53, 32, TRUE);
     if (gVideoStatus) MoveWindow(gVideoStatus, left + col + 4,
-                                 kActionsTop + 88, col - 35, 28, TRUE);
+                                 kActionsTop + 83, col - 35, 27, TRUE);
 
     const int footer = height - kFooterHeight;
     if (gClearLog) MoveWindow(gClearLog, right - 118, kLogTop + 2,
@@ -1780,9 +1788,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         SetBkMode(dc, OPAQUE);
         if (control == gStatus || control == gVideoStatus) {
-            SetTextColor(dc, COLOR_TEXT);
-            SetBkColor(dc, COLOR_PANEL);
-            return reinterpret_cast<INT_PTR>(gPanelBrush);
+            const bool videoFailed =
+                control == gVideoStatus &&
+                gRecording.state() == RecordingState::Lost;
+            SetTextColor(dc, videoFailed ? COLOR_STOP : COLOR_TEXT);
+            SetBkColor(dc, COLOR_BG);
+            return reinterpret_cast<INT_PTR>(gBackgroundBrush);
         }
 
         if (control == gLog) {
@@ -1959,7 +1970,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
         L"Bodycam Diagnostics  |  Performance Lab",
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        1190, 830,
+        1190, 930,
         nullptr, nullptr,
         hInstance, nullptr);
 
