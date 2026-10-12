@@ -160,6 +160,16 @@ int wmain(int argc, wchar_t** argv) {
     check(std::filesystem::is_regular_file(root / L"video_part_3_video_without_audio.mkv"),
           "interval without audio must remain independently usable");
 
+    // Even an unexpected missing WAV must not prevent video-only muxing.
+    std::filesystem::create_directories(recordingPartDirectory(root, 4));
+    std::ofstream(recordingPartDirectory(root, 4) / L"video_00000.mkv")
+        << "fourth interval, WAV absent";
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 4, true, &error),
+          "missing audio file must fall back to video-only");
+    check(std::filesystem::is_regular_file(root / L"video_part_4_video_without_audio.mkv"),
+          "video must survive even when audio was requested but absent");
+
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";
 }
