@@ -66,3 +66,9 @@ Requirements: CMake 3.24+, MSVC x64 Build Tools, and a Windows SDK.
 ```
 
 GitHub Actions builds `Release` x64, runs regression tests, uploads the runtime package as an artifact, and publishes separate GitHub Release assets on verified `stable` pushes.
+
+## Optional offline single-file build
+
+`BODYCAM_SINGLE_EXE=ON` embeds verified PresentMon/FFmpeg, help and licenses and links compiler runtime statically. The user receives only `BodycamDiagnostics.exe`; it unpacks checked resources to their LocalAppData folder and stores sessions there, without installation, runtime Internet access or administrator privileges. This mode uses the built-in window/Borderless HUD. The ordinary build remains the default.
+
+For reproducible Linux LLVM-MinGW building and explicit validation/licensing limitations, see [single-file build notes](docs/superpowers/plans/2026-10-12-single-exe-build-notes.md). This evaluation build is not an approved public release.

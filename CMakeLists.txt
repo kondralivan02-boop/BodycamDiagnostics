@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.24)
 project(BodycamDiagnostics LANGUAGES CXX)
 
+option(BODYCAM_SINGLE_EXE "Embed verified tools and help for offline single-file use" OFF)
+set(BODYCAM_PAYLOAD_DIR "" CACHE PATH "Prepared and verified single-EXE payload directory")
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -25,6 +28,7 @@ configure_file(
 
 add_executable(BodycamDiagnostics WIN32
     src/main.cpp
+    src/AppStorage.cpp
     src/SessionManager.cpp
     src/ProcessFinder.cpp
     src/SystemSnapshot.cpp
@@ -69,7 +73,45 @@ target_include_directories(
     src
     "${CMAKE_BINARY_DIR}/generated")
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt)
+target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt uuid)
+
+if(BODYCAM_SINGLE_EXE)
+    file(GLOB single_exe_licenses CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/licenses/*")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/tools/prepare_single_exe.py"
+        "${CMAKE_SOURCE_DIR}/runtime-tools.sha256"
+        "${CMAKE_SOURCE_DIR}/runtime-tools.sources.json"
+        "${CMAKE_SOURCE_DIR}/src/SingleExe.manifest"
+        "${CMAKE_SOURCE_DIR}/СПРАВКА.txt" ${single_exe_licenses})
+    if(NOT WIN32)
+        message(FATAL_ERROR "BODYCAM_SINGLE_EXE requires a Windows target (LLVM-MinGW is supported)")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(NOT BODYCAM_PAYLOAD_DIR)
+        set(BODYCAM_PAYLOAD_DIR "${CMAKE_BINARY_DIR}/payload")
+    endif()
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tools/prepare_single_exe.py"
+        --repo "${CMAKE_SOURCE_DIR}" --output "${BODYCAM_PAYLOAD_DIR}"
+        RESULT_VARIABLE payload_result)
+    if(NOT payload_result EQUAL 0)
+        message(FATAL_ERROR "Cannot prepare verified embedded runtime payload")
+    endif()
+    enable_language(RC)
+    target_sources(BodycamDiagnostics PRIVATE src/EmbeddedRuntime.cpp "${BODYCAM_PAYLOAD_DIR}/payload.rc")
+    target_include_directories(BodycamDiagnostics PRIVATE "${BODYCAM_PAYLOAD_DIR}")
+    target_compile_definitions(BodycamDiagnostics PRIVATE BODYCAM_SINGLE_EXE=1)
+    add_custom_command(TARGET BodycamDiagnostics POST_BUILD
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/verify_single_exe.py"
+            "$<TARGET_FILE:BodycamDiagnostics>" "${BODYCAM_PAYLOAD_DIR}/payload.json"
+        COMMENT "Verify embedded resources and reject external DLL dependencies")
+    if(MINGW)
+        target_link_options(BodycamDiagnostics PRIVATE -static)
+    elseif(MSVC)
+        set_property(TARGET BodycamDiagnostics PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        target_link_options(BodycamDiagnostics PRIVATE /MANIFEST:NO)
+    endif()
+endif()
 
 
 if(MSVC)
@@ -84,6 +126,29 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    if(WIN32)
+        add_executable(AppStorageTests tests/AppStorageTests.cpp src/AppStorage.cpp)
+        target_include_directories(AppStorageTests PRIVATE src)
+        target_compile_definitions(AppStorageTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        target_link_libraries(AppStorageTests PRIVATE shell32 ole32 uuid)
+        if(MINGW)
+            target_link_options(AppStorageTests PRIVATE -static)
+        endif()
+        add_test(NAME AppStorageTests COMMAND AppStorageTests)
+    endif()
+    if(BODYCAM_SINGLE_EXE)
+        add_test(NAME SingleExePayloadTests COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_single_exe_payload.py")
+        add_test(NAME SingleExeInspectionTests COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_single_exe_inspection.py")
+        add_test(NAME SingleExeTamperTests COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/check_single_exe_tamper.py" "$<TARGET_FILE:BodycamDiagnostics>" "${BODYCAM_PAYLOAD_DIR}/payload.json")
+        add_executable(EmbeddedRuntimeTests tests/EmbeddedRuntimeTests.cpp src/EmbeddedRuntime.cpp src/AppStorage.cpp src/ToolPreflight.cpp "${BODYCAM_PAYLOAD_DIR}/payload.rc")
+        target_include_directories(EmbeddedRuntimeTests PRIVATE src "${BODYCAM_PAYLOAD_DIR}" "${CMAKE_BINARY_DIR}/generated")
+        target_compile_definitions(EmbeddedRuntimeTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        target_link_libraries(EmbeddedRuntimeTests PRIVATE bcrypt shell32 ole32 uuid)
+        if(MINGW)
+            target_link_options(EmbeddedRuntimeTests PRIVATE -static)
+        endif()
+        add_test(NAME EmbeddedRuntimeTests COMMAND EmbeddedRuntimeTests)
+    endif()
     add_executable(AtomicOutputFileTests tests/AtomicOutputFileTests.cpp)
     target_include_directories(AtomicOutputFileTests PRIVATE src)
     target_compile_definitions(AtomicOutputFileTests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)

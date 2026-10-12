@@ -15,6 +15,10 @@
 #include <string>
 #include <vector>
 
+#include "AppStorage.h"
+#ifdef BODYCAM_SINGLE_EXE
+#include "EmbeddedRuntime.h"
+#endif
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
 #include "CrashCollector.h"
@@ -58,6 +62,8 @@ constexpr int ID_NAV_RECORD = 1013;
 constexpr int ID_NAV_REPORTS = 1014;
 constexpr int ID_NAV_SETTINGS = 1015;
 constexpr int ID_CLEAR_LOG = 1016;
+constexpr int ID_HELP_TEXT = 1017;
+constexpr int ID_LICENSES = 1018;
 constexpr int ID_TIMER = 1;
 constexpr int HOTKEY_TOGGLE = 2001;
 constexpr int HOTKEY_RECORD = 2002;
@@ -132,6 +138,8 @@ bool gFullscreenHudActive = false;
 std::filesystem::path gLastSessionPath;
 std::filesystem::path gLastReportPath;
 std::filesystem::path gRuntimeFfmpegExe;
+std::filesystem::path gRuntimeRoot;
+std::filesystem::path gSessionRoot;
 
 DWORD gGamePid = 0;
 bool gRunning = false;
@@ -149,6 +157,10 @@ std::filesystem::path appDir() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
     return std::filesystem::path(path).parent_path();
+}
+
+std::filesystem::path runtimeDir() {
+    return gRuntimeRoot.empty() ? appDir() : gRuntimeRoot;
 }
 
 std::wstring uiTimestamp() {
@@ -367,7 +379,7 @@ void startSession() {
     GetWindowTextW(gPreset, preset, static_cast<int>(std::size(preset)));
     const std::wstring presetName = preset[0] ? preset : L"Unnamed";
 
-    const auto runtimeRoot = appDir();
+    const auto runtimeRoot = runtimeDir();
     const auto presentMonExe =
         resolveRuntimeTool(runtimeRoot, L"PresentMon.exe");
     const auto ffmpegExe =
@@ -399,7 +411,7 @@ void startSession() {
 
     gSession =
         std::make_unique<SessionManager>(
-            appDir() / L"Sessions");
+            gSessionRoot);
 
     std::wstring sessionStartError;
     if (!gSession->start(
@@ -439,6 +451,7 @@ void startSession() {
     }
 
     logEvent(L"Сессия создана  •  " + presetName);
+    logEvent(L"Файлы сессии  •  " + gSession->sessionPath().wstring());
     logEvent(L"Bodycam PID  •  " + std::to_wstring(bodycam.pid));
 
     gGizmoMode = SendMessageW(gGizmo, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -545,8 +558,13 @@ void startSession() {
     updateControlsForRunningState();
 
     std::wstring fullscreenHudError;
+#ifdef BODYCAM_SINGLE_EXE
+    gFullscreenHudActive = false;
+    fullscreenHudError = L"Однофайловая версия использует оконный/Borderless HUD; подписанный UIAccess helper не включён";
+#else
     gFullscreenHudActive = collection.fullscreenHelper &&
         gFullscreenOverlay.ensureHelperRunning(&fullscreenHudError);
+#endif
 
     if (gFullscreenHudActive) {
         gOverlay.hide();
@@ -674,7 +692,7 @@ void stopSession() {
             std::chrono::steady_clock::now() - gSessionStartedAt).count();
 
     const auto runtimeManifest =
-        appDir() / L"runtime-tools.sha256";
+        runtimeDir() / L"runtime-tools.sha256";
     const char* noVideoDetail = gRecording.hadFailure()
         ? "Recording was requested but did not start"
         : "Video was disabled";
@@ -1014,9 +1032,9 @@ void toggleRecording() {
     gRecording.starting();
     updateControlsForRunningState();
     const auto videoPreflight = runToolPreflight(
-        resolveRuntimeTool(appDir(), L"PresentMon.exe"),
+        resolveRuntimeTool(runtimeDir(), L"PresentMon.exe"),
         gRuntimeFfmpegExe,
-        appDir() / L"runtime-tools.sha256");
+        runtimeDir() / L"runtime-tools.sha256");
     if (!videoPreflight.recordingReady()) {
         gRecording.lost(std::chrono::steady_clock::now());
         logEvent(L"Видео: FFmpeg/NVENC/DDAGrab не готовы  •  " + videoPreflight.details);
@@ -1740,6 +1758,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetTimer(hwnd, ID_TIMER, 500, nullptr);
 
         appendUiLog(L"Приложение готово");
+        appendUiLog(L"Каталог сессий и отчётов  •  " + gSessionRoot.wstring());
+#ifdef BODYCAM_SINGLE_EXE
+        appendUiLog(L"Встроенные инструменты распакованы и проверены  •  " + gRuntimeRoot.wstring());
+        appendUiLog(L"HUD: оконный/Borderless; UIAccess helper не включён");
+#endif
         return 0;
 
     case WM_GETMINMAXINFO: {
@@ -1864,7 +1887,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case ID_HELP: {
+#ifdef BODYCAM_SINGLE_EXE
+            HMENU menu = CreatePopupMenu();
+            AppendMenuW(menu, MF_STRING, ID_HELP_TEXT, L"Справка");
+            AppendMenuW(menu, MF_STRING, ID_LICENSES, L"Лицензии и исходники компонентов");
+            POINT point{}; GetCursorPos(&point);
+            TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_TOPALIGN, point.x, point.y, 0, hwnd, nullptr);
+            DestroyMenu(menu);
+            return 0;
+        }
+        case ID_HELP_TEXT:
+        case ID_LICENSES: {
+            const auto help = runtimeDir() / (LOWORD(wp) == ID_LICENSES ? L"licenses.txt" : L"help.txt");
+#else
             const auto help = appDir() / L"СПРАВКА.txt";
+#endif
             if (reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd, L"open", help.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
                 MessageBoxW(hwnd, (L"Не удалось открыть справку:\n" + help.wstring()).c_str(), L"Справка", MB_ICONWARNING);
             return 0;
@@ -1943,6 +1980,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int show) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    std::wstring storageError;
+#ifdef BODYCAM_SINGLE_EXE
+    if (!prepareEmbeddedRuntime(gRuntimeRoot, &storageError)) {
+        MessageBoxW(nullptr, storageError.c_str(), L"Bodycam Diagnostics — встроенные инструменты", MB_ICONERROR);
+        return 1;
+    }
+    constexpr bool perUserOnly = true;
+#else
+    constexpr bool perUserOnly = false;
+#endif
+    gSessionRoot = writableSessionRoot(appDir(), perUserOnly, &storageError);
+    if (gSessionRoot.empty()) {
+        MessageBoxW(nullptr, storageError.c_str(), L"Bodycam Diagnostics — каталог данных", MB_ICONERROR);
+        return 1;
+    }
 
     INITCOMMONCONTROLSEX icc{
         sizeof(icc),
