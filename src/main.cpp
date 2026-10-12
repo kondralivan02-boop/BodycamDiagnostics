@@ -12,6 +12,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "AudioLoopbackRecorder.h"
 #include "AudioVideoMuxer.h"
@@ -94,7 +95,7 @@ std::unique_ptr<RecorderController> gRecorder;
 std::unique_ptr<TelemetrySampler> gTelemetry;
 std::unique_ptr<SessionMirror> gMirror;
 std::unique_ptr<AudioLoopbackRecorder> gAudio;
-bool gAudioCaptured = false;
+std::vector<bool> gPartAudioCaptured;
 RecordingTimeline gRecording;
 
 DiagnosticsOverlay gOverlay;
@@ -390,7 +391,7 @@ void startSession() {
     gRecorderStartObserved = false;
     gRecorderTimelineContinuous = false;
     gRecording = RecordingTimeline{};
-    gAudioCaptured = false;
+    gPartAudioCaptured.clear();
     gLastSessionPath.clear();
     gLastReportPath.clear();
 
@@ -561,13 +562,13 @@ void stopSession() {
         gRecorder.reset();
     }
 
-    bool includeAudioInFinalVideo = gAudioCaptured;
-
     if (gAudio) {
         std::wstring audioStopError;
-        includeAudioInFinalVideo = gAudio->stop(&audioStopError) || includeAudioInFinalVideo;
+        const bool audioFinalized = gAudio->stop(&audioStopError);
+        if (!gPartAudioCaptured.empty())
+            gPartAudioCaptured.back() = audioFinalized;
 
-        if (includeAudioInFinalVideo) {
+        if (audioFinalized) {
             logEvent(L"Game audio  •  OFF");
         } else {
             logEvent(
@@ -586,7 +587,9 @@ void stopSession() {
 
             std::error_code audioEc;
             std::filesystem::remove(
-                gSession->sessionPath() / L"game_audio.wav",
+                recordingPartAudioPath(
+                    gSession->sessionPath(),
+                    static_cast<unsigned>(gRecording.intervals().size())),
                 audioEc);
         }
 
@@ -669,7 +672,7 @@ void stopSession() {
             const unsigned part = static_cast<unsigned>(index + 1);
             if (finalizeRecordingPart(
                     gRuntimeFfmpegExe, sessionPath, part,
-                    includeAudioInFinalVideo && gRecording.intervals().size() == 1,
+                    index < gPartAudioCaptured.size() && gPartAudioCaptured[index],
                     &muxError)) {
                 logEvent(L"Видео: фрагмент " + std::to_wstring(part) + L" сохранён отдельно");
                 if (!muxError.empty()) logEvent(L"Предупреждение очистки  •  " + muxError);
@@ -954,9 +957,19 @@ void toggleRecording() {
         gRecorderTimelineContinuous = false;
         if (gAudio) {
             std::wstring audioError;
-            gAudioCaptured = gAudio->stop(&audioError);
+            const bool audioFinalized = gAudio->stop(&audioError);
+            if (!gPartAudioCaptured.empty())
+                gPartAudioCaptured.back() = audioFinalized;
             gAudio.reset();
-            if (!gAudioCaptured) logEvent(L"Игровой звук недоступен  •  " + audioError);
+            if (!audioFinalized) {
+                logEvent(L"Игровой звук недоступен  •  " + audioError);
+                std::error_code audioEc;
+                std::filesystem::remove(
+                    recordingPartAudioPath(
+                        gSession->sessionPath(),
+                        static_cast<unsigned>(gRecording.intervals().size())),
+                    audioEc);
+            }
         }
         logEvent(L"Видео: запись остановлена");
         updateControlsForRunningState();
@@ -974,8 +987,9 @@ void toggleRecording() {
         updateControlsForRunningState();
         return;
     }
-    const auto partDirectory = gSession->sessionPath() / L"video" /
-        (L"part_" + std::to_wstring(gRecording.intervals().size() + 1));
+    const auto partDirectory = recordingPartDirectory(
+        gSession->sessionPath(),
+        static_cast<unsigned>(gRecording.intervals().size() + 1));
     std::error_code partError;
     const bool previousAttemptExists = std::filesystem::exists(partDirectory, partError);
     if (!partError && previousAttemptExists) {
@@ -999,14 +1013,21 @@ void toggleRecording() {
         logEvent(L"Видео: не удалось начать запись  •  " + error);
     } else {
         gRecording.start(std::chrono::steady_clock::now());
+        gPartAudioCaptured.push_back(false);
         gRecorderStartedWallClock = std::chrono::system_clock::now();
         gRecorderStartObserved = true;
         gRecorderTimelineContinuous = gRecording.intervals().size() == 1;
         logEvent(L"Видео: запись началась");
         gAudio = std::make_unique<AudioLoopbackRecorder>();
         std::wstring audioError;
-        if (!gAudio->start(gSession->sessionPath() / L"game_audio.wav", &audioError)) {
+        if (!gAudio->start(
+                recordingPartAudioPath(
+                    gSession->sessionPath(),
+                    static_cast<unsigned>(gRecording.intervals().size())),
+                &audioError)) {
             gAudio.reset();
+            std::error_code audioEc;
+            std::filesystem::remove(partDirectory / L"game_audio.wav", audioEc);
             logEvent(L"Игровой звук недоступен  •  " + audioError);
         } else {
             logEvent(L"Игровой звук: запись началась");
@@ -1395,7 +1416,9 @@ void updateLiveOverlay() {
 
             std::error_code audioEc;
             std::filesystem::remove(
-                gSession->sessionPath() / L"game_audio.wav",
+                recordingPartAudioPath(
+                    gSession->sessionPath(),
+                    static_cast<unsigned>(gRecording.intervals().size())),
                 audioEc);
         }
     }
@@ -1426,8 +1449,19 @@ void updateLiveOverlay() {
             gRecorder.reset();
             if (gAudio) {
                 std::wstring audioError;
-                gAudioCaptured = gAudio->stop(&audioError);
+                const bool audioFinalized = gAudio->stop(&audioError);
+                if (!gPartAudioCaptured.empty())
+                    gPartAudioCaptured.back() = audioFinalized;
                 gAudio.reset();
+                if (!audioFinalized) {
+                    logEvent(L"Игровой звук недоступен  •  " + audioError);
+                    std::error_code audioEc;
+                    std::filesystem::remove(
+                        recordingPartAudioPath(
+                            gSession->sessionPath(),
+                            static_cast<unsigned>(gRecording.intervals().size())),
+                        audioEc);
+                }
             }
             updateControlsForRunningState();
         }

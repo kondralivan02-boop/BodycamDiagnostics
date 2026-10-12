@@ -31,6 +31,12 @@ int wmain(int argc, wchar_t** argv) {
         std::filesystem::temp_directory_path() /
         L"BodycamDiagnostics-audio-video-muxer-test";
 
+    check(recordingPartDirectory(root, 1) == root / L"video" / L"part_1",
+          "recording interval directory must match the muxer");
+    check(recordingPartAudioPath(root, 2) ==
+              root / L"video" / L"part_2" / L"game_audio.wav",
+          "WASAPI and muxer must use the same per-interval WAV path");
+
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(root / L"video");
@@ -131,12 +137,28 @@ int wmain(int argc, wchar_t** argv) {
     error.clear();
     check(finalizeRecordingPart(fixture, root, 1, true, &error),
           "first interval with per-part audio must finalize");
+    check(readAll(root / L"mux_fixture_args.txt").find("part_1") != std::string::npos,
+          "first interval mux must read its own WAV");
     check(finalizeRecordingPart(fixture, root, 2, true, &error),
           "second interval with per-part audio must finalize");
+    const auto secondMuxArgs = readAll(root / L"mux_fixture_args.txt");
+    check(secondMuxArgs.find("part_2") != std::string::npos &&
+              secondMuxArgs.find("part_1") == std::string::npos,
+          "second interval mux must not reuse first interval audio");
     check(std::filesystem::is_regular_file(root / L"video_part_1_video_with_audio.mkv"),
           "first interval must retain its own audio");
     check(std::filesystem::is_regular_file(root / L"video_part_2_video_with_audio.mkv"),
           "second interval must retain its own audio");
+
+    // A failed optional audio interval must not block video finalization.
+    std::filesystem::create_directories(recordingPartDirectory(root, 3));
+    std::ofstream(recordingPartDirectory(root, 3) / L"video_00000.mkv")
+        << "third interval, no audio";
+    error.clear();
+    check(finalizeRecordingPart(fixture, root, 3, false, &error),
+          "failed optional audio must not prevent video finalization");
+    check(std::filesystem::is_regular_file(root / L"video_part_3_video_without_audio.mkv"),
+          "interval without audio must remain independently usable");
 
     std::filesystem::remove_all(root, ec);
     std::cout << "Audio/video muxer tests passed\n";

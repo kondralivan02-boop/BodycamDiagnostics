@@ -8,6 +8,17 @@
 #include <string>
 #include <vector>
 
+std::filesystem::path recordingPartDirectory(
+    const std::filesystem::path& sessionDirectory, unsigned partNumber) {
+    return sessionDirectory / L"video" /
+        (L"part_" + std::to_wstring(partNumber));
+}
+
+std::filesystem::path recordingPartAudioPath(
+    const std::filesystem::path& sessionDirectory, unsigned partNumber) {
+    return recordingPartDirectory(sessionDirectory, partNumber) / L"game_audio.wav";
+}
+
 namespace {
 std::wstring quote(const std::wstring& value) {
     return L"\"" + value + L"\"";
@@ -67,8 +78,8 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
     }
 
     const auto partLabel = partNumber ? L"part_" + std::to_wstring(partNumber) : std::wstring{};
-    const auto videoDir = partNumber ? sessionDirectory / L"video" / partLabel : sessionDirectory / L"video";
-    const auto audioFile = partNumber ? videoDir / L"game_audio.wav" : sessionDirectory / L"game_audio.wav";
+    const auto videoDir = partNumber ? recordingPartDirectory(sessionDirectory, partNumber) : sessionDirectory / L"video";
+    const auto audioFile = partNumber ? recordingPartAudioPath(sessionDirectory, partNumber) : sessionDirectory / L"game_audio.wav";
     ec.clear();
     const bool audioAvailable = includeAudio && std::filesystem::is_regular_file(audioFile, ec);
 
