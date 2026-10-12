@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 std::filesystem::path recordingPartDirectory(
@@ -150,7 +151,7 @@ bool finalizeVideo(const std::filesystem::path& ffmpegExe,
         ec.clear();
         std::filesystem::remove(withAudioOutput, ec);
         if (ec) {
-            std::filesystem::remove(concatFile);
+            std::filesystem::remove(concatFile, ec);
             if (error) *error = L"Audio mux failed: " + muxError +
                 L"; cannot remove incomplete audio output";
             return false;

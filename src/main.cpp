@@ -675,7 +675,7 @@ void stopSession() {
                     index < gPartAudioCaptured.size() && gPartAudioCaptured[index],
                     &muxError)) {
                 logEvent(L"Видео: фрагмент " + std::to_wstring(part) + L" сохранён отдельно");
-                if (!muxError.empty()) logEvent(L"Предупреждение очистки  •  " + muxError);
+                if (!muxError.empty()) logEvent(L"Предупреждение видео  •  " + muxError);
             } else {
                 logEvent(L"Видео: не удалось собрать фрагмент " + std::to_wstring(part) + L"  •  " + muxError);
             }
