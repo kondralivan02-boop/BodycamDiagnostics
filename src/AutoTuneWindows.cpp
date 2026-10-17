@@ -223,15 +223,20 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
         message(owner, L"Файл игры изменился до резервного копирования. Настройки не изменены.");
         return;
     }
+    bool createdBackup = false;
     if (!std::filesystem::exists(backup, ec)) {
         if (!CopyFileW(file.c_str(), backup.c_str(), TRUE)) {
             message(owner, L"Резервная копия не создана (Windows " +
                 std::to_wstring(GetLastError()) + L"). Настройки не изменены.");
             return;
         }
+        createdBackup = true;
     }
     std::string original;
-    if (!noReparse(backup) || !readSmall(backup, original) || original.empty()) {
+    if (!noReparse(backup) || !readSmall(backup, original) || original.empty() ||
+        (createdBackup && original != old)) {
+        // Remove only a backup created by this failed attempt, never earlier evidence.
+        if (createdBackup) DeleteFileW(backup.c_str());
         message(owner, L"Проверка резервной копии не пройдена. Настройки не изменены.");
         return;
     }
