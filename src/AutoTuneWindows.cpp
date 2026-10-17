@@ -1,5 +1,6 @@
 #include "AutoTuneWindows.h"
 #include "AutoTunePlan.h"
+#include "AutoTuneFileIO.h"
 #include "ProcessFinder.h"
 #include <Windows.h>
 #include <ShlObj.h>
@@ -44,11 +45,10 @@ bool noReparse(const std::filesystem::path& path) {
 bool readSmall(const std::filesystem::path& file, std::string& bytes) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(file, ec) ||
-        std::filesystem::file_size(file, ec) > 1024 * 1024 || ec) return false;
+        std::filesystem::file_size(file, ec) > autotune::kMaxGameIniBytes || ec)
+        return false;
     std::ifstream stream(file, std::ios::binary);
-    if (!stream) return false;
-    bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-    return stream.eof() || !stream.bad();
+    return autotune::readBounded(stream, bytes);
 }
 
 std::filesystem::path configFile() {
