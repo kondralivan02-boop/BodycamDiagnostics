@@ -223,7 +223,13 @@ TestValidationResult validateTestSession(
     bool ffmpegTrustedForProbe,
     double requestedVideoSeconds,
     bool videoCaptureFailed,
-    const std::vector<double>& requestedIntervals) {
+    const std::vector<double>& requestedIntervals,
+    const std::filesystem::path& ffmpegProbeExe) {
+
+    const auto durationProbeFfmpeg =
+        ffmpegProbeExe.empty()
+            ? defaultFfmpegPath(sessionPath)
+            : ffmpegProbeExe;
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
@@ -275,7 +281,7 @@ TestValidationResult validateTestSession(
                 continue;
             }
             double duration = 0.0;
-            if (!probeVideoDurationSeconds(defaultFfmpegPath(sessionPath), part, sessionPath, duration)) {
+            if (!probeVideoDurationSeconds(durationProbeFfmpeg, part, sessionPath, duration)) {
                 result.issues.push_back(L"Не удалось измерить длительность фрагмента " + std::to_wstring(index + 1));
                 result.videoDurationChecked = false;
                 continue;
@@ -306,7 +312,7 @@ TestValidationResult validateTestSession(
             } else {
                 result.videoDurationChecked =
                     probeVideoDurationSeconds(
-                        defaultFfmpegPath(sessionPath),
+                        durationProbeFfmpeg,
                         video,
                         sessionPath,
                         result.videoDurationSeconds);

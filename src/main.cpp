@@ -834,7 +834,8 @@ void stopSession() {
         ffmpegTrustedForProbe,
         gRecording.requestedSeconds(),
         gRecording.hadFailure(),
-        requestedVideoIntervals);
+        requestedVideoIntervals,
+        gRuntimeFfmpegExe);
 
     std::wstring validationError;
     if (writeTestValidationReport(

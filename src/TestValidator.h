@@ -26,7 +26,8 @@ TestValidationResult validateTestSession(
     bool ffmpegTrustedForProbe,
     double requestedVideoSeconds = 0.0,
     bool videoCaptureFailed = false,
-    const std::vector<double>& requestedIntervals = {});
+    const std::vector<double>& requestedIntervals = {},
+    const std::filesystem::path& ffmpegProbeExe = {});
 
 bool writeTestValidationReport(
     const TestValidationResult& result,

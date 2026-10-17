@@ -87,6 +87,45 @@ int main(int argc, char** argv) {
         runtimeSession, durationMetrics, 10.0, false, false, 0.5, false, {0.5});
     check(!untrustedShortPart.valid && !untrustedShortPart.videoDurationChecked,
           "short recording duration must not bypass FFmpeg trust");
+    const auto singleExeRoot = root / L"single-exe-layout";
+    const auto singleExeSession = singleExeRoot / L"Sessions" / L"session";
+    const auto embeddedRuntime = singleExeRoot / L"Runtime" / L"payload";
+    std::filesystem::create_directories(singleExeSession);
+    std::filesystem::create_directories(embeddedRuntime);
+    const auto embeddedFfmpeg = embeddedRuntime / L"ffmpeg.exe";
+    std::filesystem::copy_file(
+        ffmpegFixture,
+        embeddedFfmpeg,
+        std::filesystem::copy_options::overwrite_existing);
+    std::ofstream(singleExeSession / L"video_part_1_video_without_audio.mkv") << "single-exe part";
+
+    const auto missingSingleExeProbePath = validateTestSession(
+        singleExeSession,
+        durationMetrics,
+        10.0,
+        false,
+        true,
+        10.0,
+        false,
+        {10.0});
+    check(!missingSingleExeProbePath.valid,
+          "legacy Sessions-relative FFmpeg lookup must not accidentally validate the single-exe layout");
+
+    const auto singleExeValidation = validateTestSession(
+        singleExeSession,
+        durationMetrics,
+        10.0,
+        false,
+        true,
+        10.0,
+        false,
+        {10.0},
+        embeddedFfmpeg);
+    check(singleExeValidation.valid,
+          "validator must use the exact trusted FFmpeg path supplied by the single-exe runtime");
+    check(singleExeValidation.videoDurationChecked,
+          "single-exe video duration must be probed with the supplied runtime FFmpeg");
+
     const auto caps = probeEnvironmentCapabilities(GetCurrentProcessId());
     check(caps.sources.size() == 3, "both channels probed independently");
     check(caps.sources.front().status == "available", "current process query");
