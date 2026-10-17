@@ -65,6 +65,14 @@ inline Plan prepare(std::string_view ini, Preset preset) {
     }
     const auto index = static_cast<std::size_t>(preset);
     if (index >= 3) { out.reason = "Unknown preset"; return out; }
+    // Reject unsupported layouts without exposing a partially rewritten INI.
+    const auto reject = [&out](const char* reason) -> Plan {
+        out.supported = false;
+        out.reason = reason;
+        out.updated.clear();
+        out.changes.clear();
+        return out;
+    };
     out.updated.reserve(ini.size());
     bool section = false, sawSection = false;
     std::array<bool, kKnownSettings.size()> seen{};
@@ -75,9 +83,16 @@ inline Plan prepare(std::string_view ini, Preset preset) {
         const auto raw = ini.substr(pos, limit - pos);
         auto line = trim(raw);
         if (pos == 0 && line.starts_with("\xef\xbb\xbf")) line.remove_prefix(3);
-        if (line.size() >= 2 && line.front() == '[' && line.back() == ']') {
+        // A malformed or annotated section header must not leave us writing
+        // under the previous [ScalabilityGroups] section. Reject the entire
+        // plan instead of guessing whether the game will parse that header.
+        if (!line.empty() && line.front() == '[') {
+            if (line.size() < 3 || line.back() != ']' ||
+                line.find(']') != line.size() - 1) {
+                return reject("Unsupported INI section header");
+            }
             section = lower(line) == "[scalabilitygroups]";
-            if (section && sawSection) { out.reason = "Duplicate section"; return out; }
+            if (section && sawSection) return reject("Duplicate section");
             sawSection |= section;
         }
         bool changed = false;
@@ -87,16 +102,16 @@ inline Plan prepare(std::string_view ini, Preset preset) {
                 const auto key = lower(trim(raw.substr(0, eq)));
                 for (std::size_t n = 0; n < kKnownSettings.size(); ++n) {
                     if (key != kKnownSettings[n].key) continue;
-                    if (seen[n]) { out.reason = "Duplicate key"; return out; }
+                    if (seen[n]) { return reject("Duplicate key"); }
                     seen[n] = true; ++recognized;
                     const auto old = trim(raw.substr(eq + 1));
                     if (old.empty() || old.size() > 2 ||
                         !std::all_of(old.begin(), old.end(), [](unsigned char c) { return c >= '0' && c <= '9'; })) {
-                        out.reason = "Unsupported scalability value"; return out;
+                        return reject("Unsupported scalability value");
                     }
                     int original = 0;
                     for (char c : old) original = original * 10 + (c - '0');
-                    if (original > 4) { out.reason = "Unsupported scalability level"; return out; }
+                    if (original > 4) { return reject("Unsupported scalability level"); }
                     const int target = kKnownSettings[n].values[index];
                     if (original != target) {
                         out.updated.append(raw.substr(0, eq + 1));
@@ -118,8 +133,7 @@ inline Plan prepare(std::string_view ini, Preset preset) {
         pos = end == std::string_view::npos ? ini.size() : end + 1;
     }
     if (!sawSection || recognized < 4) {
-        out.reason = "No compatible ScalabilityGroups section with >=4 known keys";
-        out.updated.clear(); out.changes.clear(); return out;
+        return reject("No compatible ScalabilityGroups section with >=4 known keys");
     }
     out.supported = true;
     return out;
