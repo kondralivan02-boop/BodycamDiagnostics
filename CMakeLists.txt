@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(BodycamDiagnostics LANGUAGES CXX)
 
 option(BODYCAM_SINGLE_EXE "Embed verified tools and help for offline single-file use" OFF)
+option(BODYCAM_EXPERIMENTAL_AUTOTUNE "Opt-in Bodycam config optimizer (unvalidated on target game)" OFF)
 set(BODYCAM_PAYLOAD_DIR "" CACHE PATH "Prepared and verified single-EXE payload directory")
 
 set(CMAKE_CXX_STANDARD 20)
@@ -75,6 +76,12 @@ target_include_directories(
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt uuid)
 
+if(BODYCAM_EXPERIMENTAL_AUTOTUNE)
+    target_sources(BodycamDiagnostics PRIVATE src/AutoTuneWindows.cpp)
+    target_compile_definitions(BodycamDiagnostics PRIVATE BODYCAM_EXPERIMENTAL_AUTOTUNE=1)
+    target_link_libraries(BodycamDiagnostics PRIVATE dxgi)
+endif()
+
 if(BODYCAM_SINGLE_EXE)
     file(GLOB single_exe_licenses CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/licenses/*")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -126,6 +133,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(AutoTunePlanTests tests/AutoTunePlanTests.cpp)
+    target_include_directories(AutoTunePlanTests PRIVATE src)
+    add_test(NAME AutoTunePlanTests COMMAND AutoTunePlanTests)
+    if(MSVC)
+        target_compile_options(AutoTunePlanTests PRIVATE /utf-8 /W4 /WX)
+    endif()
     add_executable(BoundedDiagnosticOutputTests tests/BoundedDiagnosticOutputTests.cpp)
     target_include_directories(BoundedDiagnosticOutputTests PRIVATE src)
     add_test(NAME BoundedDiagnosticOutputTests COMMAND BoundedDiagnosticOutputTests)

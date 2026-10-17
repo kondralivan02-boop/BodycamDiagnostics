@@ -16,6 +16,9 @@
 #include <vector>
 
 #include "AppStorage.h"
+#ifdef BODYCAM_EXPERIMENTAL_AUTOTUNE
+#include "AutoTuneWindows.h"
+#endif
 #ifdef BODYCAM_SINGLE_EXE
 #include "EmbeddedRuntime.h"
 #endif
@@ -64,6 +67,10 @@ constexpr int ID_NAV_SETTINGS = 1015;
 constexpr int ID_CLEAR_LOG = 1016;
 constexpr int ID_HELP_TEXT = 1017;
 constexpr int ID_LICENSES = 1018;
+#ifdef BODYCAM_EXPERIMENTAL_AUTOTUNE
+constexpr int ID_AUTOTUNE_RUN = 1020;
+constexpr int ID_AUTOTUNE_RESTORE = 1021;
+#endif
 constexpr int ID_TIMER = 1;
 constexpr int HOTKEY_TOGGLE = 2001;
 constexpr int HOTKEY_RECORD = 2002;
@@ -1866,9 +1873,35 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (gLog) SetFocus(gLog);
             return 0;
         case ID_NAV_SETTINGS:
+#ifdef BODYCAM_EXPERIMENTAL_AUTOTUNE
+            if (!gRunning) {
+                HMENU menu = CreatePopupMenu();
+                if (menu) {
+                    AppendMenuW(menu, MF_STRING, ID_AUTOTUNE_RUN,
+                        L"Автоподбор графики (эксперимент)");
+                    AppendMenuW(menu, MF_STRING, ID_AUTOTUNE_RESTORE,
+                        L"Восстановить исходные настройки Bodycam");
+                    RECT rect{};
+                    GetWindowRect(gNavSettings, &rect);
+                    TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_TOPALIGN,
+                        rect.left, rect.bottom, 0, hwnd, nullptr);
+                    DestroyMenu(menu);
+                }
+            }
+#else
             if (gGizmo && IsWindowEnabled(gGizmo))
                 SetFocus(gGizmo);
+#endif
             return 0;
+#ifdef BODYCAM_EXPERIMENTAL_AUTOTUNE
+        case ID_AUTOTUNE_RUN:
+        case ID_AUTOTUNE_RESTORE:
+            runGameAutoTune(hwnd, gSessionRoot.parent_path(),
+                LOWORD(wp) == ID_AUTOTUNE_RESTORE,
+                gGizmo && SendMessageW(gGizmo, BM_GETCHECK, 0, 0) == BST_CHECKED,
+                gRunning);
+            return 0;
+#endif
         case ID_CLEAR_LOG:
             // Only the visible window is cleared. Session logs on disk and
             // mirrored diagnostic evidence remain untouched.

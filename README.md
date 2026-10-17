@@ -89,3 +89,35 @@ For reproducible Linux LLVM-MinGW building and explicit validation/licensing lim
 ## PresentMon failure diagnostics
 
 Capture stdout remains exclusively in the FPS CSV. PresentMon stderr is drained separately and saved to `<csv filename>.stderr.log` when the controller finishes or detects an early exit. The standard `presentmon.csv.stderr.log` is included in the diagnostic report ZIP. The log retains at most 16 KiB plus a truncation marker; startup/health errors include the exit code and at most 4 KiB of sanitized diagnostic text. Existing stderr logs are never overwritten: a collision or setup error refuses the new capture explicitly. The reader does not wait for EOF from descendants, and shutdown drains at most 64 KiB before closing its pipe. OS file operations themselves have no hard cancellation deadline. This improves evidence collection; it does not fix the underlying PresentMon failure or APPCRASH `0xC0000005`.
+
+## Experimental Bodycam game AutoTune (disabled by default)
+
+An isolated, **opt-in** game-configuration prototype is available only if built with
+`-DBODYCAM_EXPERIMENTAL_AUTOTUNE=ON`. Production builds are unchanged. In that
+experimental build, open **НАСТРОЙКИ** to preview automatic Performance/Balanced/
+Quality scalability suggestions or restore the original file. The initial suggestion
+uses detected dedicated GPU memory (DXGI), RAM and display resolution; it is **not**
+a measured optimum. Compare F9 captures under equivalent conditions before judging.
+
+The prototype looks for one and only one accessible `GameUserSettings.ini` under
+`%LOCALAPPDATA%\\Bodycam\\Saved\\Config\\Window`, `Windows` or `WindowsNoEditor`.
+It only changes **existing, numeric** `sg.*Quality` entries in a valid
+`[ScalabilityGroups]` section, preserving comments, unrelated keys and line
+endings. It refuses unsupported/ambiguous/duplicate configurations. It does not
+control DLSS, Frame Generation, unknown Bodycam-specific settings, anti-cheat,
+mouse, keyboard, game memory or system/Gizmo permissions.
+
+The game and F9 diagnostics must be stopped, Gizmo compatibility mode disabled,
+and **the user must explicitly approve a change preview**. Before any change,
+a never-overwritten original backup is placed at
+`<diagnostics data root>/AutoTuneBackups/<config folder>-GameUserSettings.original.ini`.
+The INI is replaced with a flushed temporary file only if its content remained
+unchanged since preview. Restore requires a separate explicit confirmation.
+The optimizer never bypasses an inaccessible game configuration folder: on
+managed club computers an administrator may need to authorize ordinary writes.
+A diagnostic data root on D: can be selected via `BODYCAM_DIAG_DATA_ROOT` as
+already documented; the game itself still keeps its legitimate config in LocalAppData.
+
+**Validation boundary:** the portable planner test is runnable on Linux; Windows
+build, UI, real Bodycam v0.8 config behavior and before/after benchmarking
+remain unverified. Keep this experiment off in ordinary builds until tested.
