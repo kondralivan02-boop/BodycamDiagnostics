@@ -85,3 +85,7 @@ Expected application-owned files: `D:\BodycamDiagnosticsData\Runtime\<payload-id
 This controls **the application's own runtime and session paths**, not OS-managed locations. Windows, PowerShell, antivirus, GPU drivers and tools may still access the system drive; no guarantee of zero Windows-level C: I/O is made. Do not run this experimental build in a Gizmo-managed club until the administrator authorizes it and compatibility has been verified.
 
 For reproducible Linux LLVM-MinGW building and explicit validation/licensing limitations, see [single-file build notes](docs/superpowers/plans/2026-10-12-single-exe-build-notes.md). This evaluation build is not an approved public release.
+
+## PresentMon failure diagnostics
+
+Capture stdout remains exclusively in the FPS CSV. PresentMon stderr is drained separately and saved to `<csv filename>.stderr.log` when the controller finishes or detects an early exit. The standard `presentmon.csv.stderr.log` is included in the diagnostic report ZIP. The log retains at most 16 KiB plus a truncation marker; startup/health errors include the exit code and at most 4 KiB of sanitized diagnostic text. Existing stderr logs are never overwritten: a collision or setup error refuses the new capture explicitly. The reader does not wait for EOF from descendants, and shutdown drains at most 64 KiB before closing its pipe. OS file operations themselves have no hard cancellation deadline. This improves evidence collection; it does not fix the underlying PresentMon failure or APPCRASH `0xC0000005`.
