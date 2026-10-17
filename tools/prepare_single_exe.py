@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
 import urllib.request
 import zipfile
 
@@ -31,33 +32,77 @@ def parse_manifest(data):
     return result
 
 
+def atomic_write_bytes(target, data):
+    """Publish complete build outputs without following an existing output symlink."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='wb', dir=target.parent,
+                                         prefix=target.name + '.', suffix='.tmp',
+                                         delete=False) as out:
+            temporary = Path(out.name)
+            out.write(data)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def atomic_write_text(target, text):
+    atomic_write_bytes(target, text.encode('utf-8'))
+
+
 def fetch_verified(url, target, expected):
     target = Path(target)
+    if target.is_symlink():
+        raise ValueError('Symlinked runtime cache is not permitted: ' + str(target))
     if target.is_file() and sha256(target) == expected:
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + '.download')
+    temporary = None
     try:
-        with urllib.request.urlopen(url, timeout=120) as response, temporary.open('wb') as out:
-            while block := response.read(1024 * 1024):
-                out.write(block)
+        with tempfile.NamedTemporaryFile(mode='wb', dir=target.parent,
+                                         prefix=target.name + '.', suffix='.tmp',
+                                         delete=False) as out:
+            temporary = Path(out.name)
+            with urllib.request.urlopen(url, timeout=120) as response:
+                while block := response.read(1024 * 1024):
+                    out.write(block)
         if sha256(temporary) != expected:
             raise ValueError('Download SHA-256 mismatch: ' + url)
         os.replace(temporary, target)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return target
 
 
 def extract_verified_ffmpeg(archive, target, expected):
+    """Stream and verify the extracted binary before publishing it atomically."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive) as z:
         names = [n for n in z.namelist() if n.lower().endswith('/bin/ffmpeg.exe')]
         if len(names) != 1:
             raise ValueError('Expected exactly one ffmpeg.exe')
-        data = z.read(names[0])
-    if hashlib.sha256(data).hexdigest() != expected:
-        raise ValueError('FFmpeg executable SHA-256 mismatch')
-    Path(target).write_bytes(data)
+        temporary = None
+        try:
+            digest = hashlib.sha256()
+            with tempfile.NamedTemporaryFile(mode='wb', dir=target.parent,
+                                             prefix=target.name + '.', suffix='.tmp',
+                                             delete=False) as out:
+                temporary = Path(out.name)
+                with z.open(names[0]) as source:
+                    while block := source.read(1024 * 1024):
+                        digest.update(block)
+                        out.write(block)
+            if digest.hexdigest() != expected:
+                raise ValueError('FFmpeg executable SHA-256 mismatch')
+            os.replace(temporary, target)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 def make_notices(repo):
@@ -86,20 +131,20 @@ def prepare(repo, out):
         raise ValueError('PresentMon executable SHA-256 mismatch')
     ff = fetch_verified(sources['ffmpeg']['url'], out / 'ffmpeg.download.zip', sources['ffmpeg']['downloadSha256'])
     extract_verified_ffmpeg(ff, out / 'ffmpeg.exe', expected['ffmpeg.exe'])
-    (out / 'PresentMon.exe').write_bytes(pm.read_bytes())
-    (out / 'runtime-tools.sha256').write_bytes(manifest)
-    (out / 'help.txt').write_bytes((repo / 'СПРАВКА.txt').read_bytes())
+    atomic_write_bytes(out / 'PresentMon.exe', pm.read_bytes())
+    atomic_write_bytes(out / 'runtime-tools.sha256', manifest)
+    atomic_write_bytes(out / 'help.txt', (repo / 'СПРАВКА.txt').read_bytes())
     notices = make_notices(repo)
-    (out / 'licenses.txt').write_bytes(notices)
+    atomic_write_bytes(out / 'licenses.txt', notices)
     assets = ['PresentMon.exe', 'ffmpeg.exe', 'runtime-tools.sha256', 'help.txt', 'licenses.txt']
     records = [(101+i, name, sha256(out/name)) for i, name in enumerate(assets)]
     version = hashlib.sha256(json.dumps(records).encode()).hexdigest()
-    (out/'payload.rc').write_text('#include <windows.h>\n1 RT_MANIFEST \"' + (repo/'src'/'SingleExe.manifest').as_posix() + '\"\n' + '\n'.join(f'{i} RCDATA "{(out/name).as_posix()}"' for i, name, _ in records) + '\n')
-    (out/'EmbeddedPayload.h').write_text('#pragma once\n#include <array>\nstruct EmbeddedAsset { int id; const wchar_t* name; const char* sha; };\n' +
+    atomic_write_text(out/'payload.rc', '#include <windows.h>\n1 RT_MANIFEST "' + (repo/'src'/'SingleExe.manifest').as_posix() + '"\n' + '\n'.join(f'{i} RCDATA "{(out/name).as_posix()}"' for i, name, _ in records) + '\n')
+    atomic_write_text(out/'EmbeddedPayload.h', '#pragma once\n#include <array>\nstruct EmbeddedAsset { int id; const wchar_t* name; const char* sha; };\n' +
         'inline constexpr const wchar_t* kEmbeddedVersion = L"'+version+'";\n' +
         'inline constexpr std::array<EmbeddedAsset, 5> kEmbeddedAssets = {{\n' +
         ',\n'.join(f'{{{i}, L"{name}", "{digest}"}}' for i,name,digest in records) + '\n}};\n')
-    (out/'payload.json').write_text(json.dumps({'version':version, 'assets': [{'id':i,'name':n,'sha256':h,'bytes':(out/n).stat().st_size} for i,n,h in records]}, indent=2))
+    atomic_write_text(out/'payload.json', json.dumps({'version':version, 'assets': [{'id':i,'name':n,'sha256':h,'bytes':(out/n).stat().st_size} for i,n,h in records]}, indent=2))
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('--repo',type=Path,required=True); parser.add_argument('--output',type=Path,required=True)
