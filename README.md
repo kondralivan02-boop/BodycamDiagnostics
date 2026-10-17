@@ -69,6 +69,19 @@ GitHub Actions builds `Release` x64, runs regression tests, uploads the runtime 
 
 ## Optional offline single-file build
 
-`BODYCAM_SINGLE_EXE=ON` embeds verified PresentMon/FFmpeg, help and licenses and links compiler runtime statically. The user receives only `BodycamDiagnostics.exe`; it unpacks checked resources to their LocalAppData folder and stores sessions there, without installation, runtime Internet access or administrator privileges. This mode uses the built-in window/Borderless HUD. The ordinary build remains the default.
+`BODYCAM_SINGLE_EXE=ON` embeds verified PresentMon/FFmpeg, help and licenses and links compiler runtime statically. The user receives only `BodycamDiagnostics.exe`; it unpacks checked resources to the current user's LocalAppData folder by default, without installation, runtime Internet access or administrator privileges. This mode uses the built-in window/Borderless HUD. The ordinary build remains the default.
+
+### Keep Bodycam Diagnostics data on D:
+
+Set the per-process `BODYCAM_DIAG_DATA_ROOT` environment variable **before launching** the single-file executable. This affects both unpacked runtime tools and diagnostic sessions (including reports and video). Example in PowerShell, using the real downloaded EXE path:
+
+```powershell
+$env:BODYCAM_DIAG_DATA_ROOT = 'D:\BodycamDiagnosticsData'
+& 'D:\Downloads\BodycamDiagnostics\BodycamDiagnostics.exe'
+```
+
+Expected application-owned files: `D:\BodycamDiagnosticsData\Runtime\<payload-id>\` and `D:\BodycamDiagnosticsData\Sessions\`. No permanent environment setting or adjacent configuration file is required. The override is deliberately **fail-closed**: if set to an empty, relative, UNC, drive-root-only, inaccessible or reparse/junction path, the app displays an error and does not silently fall back to C:. The override must point to a writable directory on an accessible local drive. Run the command each time in a new PowerShell session, or set up a trusted shortcut that supplies the environment variable.
+
+This controls **the application's own runtime and session paths**, not OS-managed locations. Windows, PowerShell, antivirus, GPU drivers and tools may still access the system drive; no guarantee of zero Windows-level C: I/O is made. Do not run this experimental build in a Gizmo-managed club until the administrator authorizes it and compatibility has been verified.
 
 For reproducible Linux LLVM-MinGW building and explicit validation/licensing limitations, see [single-file build notes](docs/superpowers/plans/2026-10-12-single-exe-build-notes.md). This evaluation build is not an approved public release.

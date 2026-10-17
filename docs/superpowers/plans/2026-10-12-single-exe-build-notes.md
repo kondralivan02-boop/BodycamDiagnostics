@@ -14,13 +14,15 @@ CMake `BODYCAM_SINGLE_EXE=ON` embeds five RCDATA resources: PresentMon, FFmpeg, 
 
 ## Runtime
 
-There is no runtime download, installer, adjacent DLL or elevation. Assets are written atomically beneath the current user's known LocalAppData folder:
+There is no runtime download, installer, adjacent DLL or elevation. By default, assets are written atomically beneath the current user's known LocalAppData folder:
 
 `%LOCALAPPDATA%\BodycamDiagnostics\Runtime\<payload SHA-256>\`
 
+An explicit per-process `BODYCAM_DIAG_DATA_ROOT=D:\BodycamDiagnosticsData` override instead stores the runtime at `D:\BodycamDiagnosticsData\Runtime\<payload SHA-256>\` and sessions at `D:\BodycamDiagnosticsData\Sessions\`. The same root-selection function is used for both. A configured but invalid root fails closed, never silently falling back to LocalAppData. Only fully qualified, non-root-only paths on an accessible local drive are allowed; path traversal, junctions, symlinks, non-directories and inaccessible directories are rejected. The configured Sessions path is safely created before use. Normal/default storage behavior is unchanged.
+
 Each cached file is hashed before reuse. A mismatch, reparse path, inaccessible directory or another instance holding the extraction lock gives a visible error and prevents tool execution. Existing mismatching files are never overwritten. The mutex-equivalent file lock serializes unpacking; it never deletes diagnostic data. The generated trust anchor is still enforced, and existing preflight/finalization trust checks use the extracted manifest. ToolPreflight is unchanged.
 
-Single-file sessions always use `%LOCALAPPDATA%\BodycamDiagnostics\Sessions\`; their actual paths appear in the event log. The ordinary build keeps writable adjacent Sessions and falls back to the user profile if that location is unavailable. SessionManager already allocates unique session directories, preserving earlier logs and recordings. Help opens extracted text; its menu also opens the complete embedded license notices offline. Single-file mode uses the built-in window/Borderless HUD and logs the absence of a signed UIAccess helper. Gizmo policy remains unchanged.
+Single-file sessions default to `%LOCALAPPDATA%\BodycamDiagnostics\Sessions\` unless `BODYCAM_DIAG_DATA_ROOT` selects a valid local root; their actual paths appear in the event log. The ordinary build keeps writable adjacent Sessions and falls back to the user profile if that location is unavailable. SessionManager already allocates unique session directories, preserving earlier logs and recordings. Help opens extracted text; its menu also opens the complete embedded license notices offline. Single-file mode uses the built-in window/Borderless HUD and logs the absence of a signed UIAccess helper. Gizmo policy remains unchanged.
 
 ## Verification boundaries
 

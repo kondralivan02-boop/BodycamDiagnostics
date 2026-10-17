@@ -19,6 +19,12 @@ BODYCAM DIAGNOSTICS — СПРАВКА
 Что программа читает
 Программа проверяет процесс Bodycam, сведения о системе, данные кадров PresentMon и базовые показатели ПК. В обычном режиме дополнительно читает события Windows и ограниченные копии логов Bodycam. По запросу пользователя FFmpeg захватывает изображение рабочего стола, а WASAPI может записывать игровой звук. Проверка среды и установка инструментов выполняются отдельными скриптами; установка скачивает закреплённые версии и сверяет SHA-256.
 
+Хранение файлов на другом диске (single EXE)
+По умолчанию встроенные инструменты и сессии single-EXE размещаются в LocalAppData Windows. Чтобы сохранять собственные данные программы на D:, ДО запуска EXE установите переменную окружения BODYCAM_DIAG_DATA_ROOT со значением D:\BodycamDiagnosticsData. Например, в PowerShell:
+$env:BODYCAM_DIAG_DATA_ROOT = 'D:\BodycamDiagnosticsData'
+& 'D:\Downloads\BodycamDiagnostics\BodycamDiagnostics.exe'
+Тогда распакованные PresentMon/FFmpeg и отчёты будут в D:\BodycamDiagnosticsData\Runtime и D:\BodycamDiagnosticsData\Sessions. Неправильный или недоступный путь приводит к остановке с ошибкой, без перехода на C:. Это не отключает обычные обращения самой Windows и драйверов к системному диску. Обновляйте EXE только после сверки нового SHA-256. Не запускайте программу в компьютерном клубе без согласования с администратором.
+
 Что сохраняется
 В папке Sessions создаются presentmon.csv, telemetry.csv, summary.json/txt, validation.json/txt, performance_health.json/txt, session_diagnostics.json/txt, environment_capabilities.json, session.log и report_bundle.zip. Если включалось видео, в папке сессии появляются отдельные MKV для каждого включения записи. Архив отчёта содержит диагностику & журналы, но не сами видео. В обычном режиме могут появиться windows_events.json, infrastructure_evidence.json/txt и bodycam_logs_manifest.json. Состав зависит от доступных источников.
 
