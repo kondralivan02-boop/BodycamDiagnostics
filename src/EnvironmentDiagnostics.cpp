@@ -134,15 +134,20 @@ SourceCapability readChannel(const wchar_t* channel, const std::wstring& query,
     return status;
 }
 }
-EnvironmentCapabilities probeEnvironmentCapabilities(std::uint32_t gamePid) {
+EnvironmentCapabilities probeEnvironmentCapabilities(std::uint32_t gamePid, bool includeEventLogs) {
     EnvironmentCapabilities profile;
     HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, gamePid);
     const DWORD processError = process ? ERROR_SUCCESS : GetLastError();
     if (process) CloseHandle(process);
     profile.sources.push_back({"game_process_query", process ? "available" : errorStatus(processError), processError, true,
                                "PROCESS_QUERY_LIMITED_INFORMATION only; does not prove all telemetry counters are readable"});
-    for (const wchar_t* channel : {L"System", L"Application"})
-        profile.sources.push_back(readChannel(channel, L"*", nullptr));
+    if (includeEventLogs) {
+        for (const wchar_t* channel : {L"System", L"Application"})
+            profile.sources.push_back(readChannel(channel, L"*", nullptr));
+    } else {
+        profile.sources.push_back({"event_log_System", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"});
+        profile.sources.push_back({"event_log_Application", "disabled_by_gizmo_mode", 0, true, "Gizmo compatibility mode"});
+    }
     return profile;
 }
 bool saveEnvironmentCapabilities(const EnvironmentCapabilities& profile, const std::filesystem::path& output) {

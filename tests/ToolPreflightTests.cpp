@@ -53,6 +53,9 @@ int wmain(int argc, wchar_t** argv) {
     std::ofstream(fakeFfmpeg) << "not-the-verified-ffmpeg";
     const auto trustedManifestPreflight =
         runToolPreflight(preferred, fakeFfmpeg, trustedManifest);
+    const auto diagnosticsOnly = runToolPreflight(preferred, fakeFfmpeg, trustedManifest, false);
+    check(!diagnosticsOnly.ffmpegTrusted && !diagnosticsOnly.nvencAvailable,
+          "video-off preflight must skip FFmpeg verification and probing");
     check(trustedManifestPreflight.hashManifestFound,
           "repository runtime manifest should be found");
     check(trustedManifestPreflight.hashManifestTrusted,

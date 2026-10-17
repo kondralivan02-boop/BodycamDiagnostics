@@ -36,6 +36,7 @@ struct SessionDiagnosticsResult {
     bool stutterCorrelationAvailable = false;
 
     std::size_t totalFrames = 0;
+    std::size_t captureGaps = 0;
     double durationSeconds = 0.0;
     double averageFps = 0.0;
     double onePercentLowFps = 0.0;
@@ -67,4 +68,3 @@ bool writeSessionDiagnosticsReport(
     const std::filesystem::path& jsonOutput,
     const std::filesystem::path& textOutput,
     std::wstring* error = nullptr);
-

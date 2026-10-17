@@ -1,0 +1,37 @@
+Bodycam Diagnostics — third-party notices (single-file evaluation build)
+
+The embedded programs run as separate child processes; their licenses remain
+independent. No runtime download is needed. This file and the complete license
+texts are accessible from the application's Help menu, including offline.
+
+PresentMon 2.6.0: Copyright Intel Corporation, MIT license.
+Unmodified official binary and source:
+https://github.com/GameTechDev/PresentMon/releases/tag/v2.6.0
+https://github.com/GameTechDev/PresentMon/tree/v2.6.0
+
+FFmpeg 9.0.2 essentials_build by Gyan: GNU GPL version 3.
+Unmodified binary: https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2
+Source revision identified by the verified archive's README:
+https://github.com/FFmpeg/FFmpeg/commit/946fcce07b
+Source archive: https://github.com/FFmpeg/FFmpeg/archive/946fcce07b.tar.gz
+Build configuration and enabled external libraries: FFmpeg-build-README below.
+Upstream build provider and source/build information:
+https://github.com/GyanD/codexffmpeg
+https://www.gyan.dev/ffmpeg/builds/
+
+FFmpeg incorporates third-party libraries listed in its README. These source
+links do not establish availability of their exact Corresponding Source or a
+reproducible complete upstream build. Public redistribution is not approved by
+this evaluation build: before a public release, provide the complete matching
+Corresponding Source (including external libraries and build scripts) through
+a GPLv3-compliant distribution channel. No invented source offer is made here.
+
+Statically linked LLVM-MinGW runtime: LLVM Project / libc++ / libunwind,
+Apache-2.0 WITH LLVM-exception and additional notices in LLVM-MinGW.txt below.
+https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922
+
+MinGW-w64 runtime notices and winpthreads notices are also reproduced below,
+from the same LLVM-MinGW 20260922 distribution used for this build.
+https://github.com/mingw-w64/mingw-w64
+
+All third-party license texts follow. No warranty; see individual licenses.

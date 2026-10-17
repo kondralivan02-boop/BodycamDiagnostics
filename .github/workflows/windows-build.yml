@@ -2,6 +2,10 @@ name: Windows Build
 
 on:
   push:
+    branches:
+      - main
+      - dev
+      - stable
   pull_request:
   workflow_dispatch:
 
@@ -57,6 +61,9 @@ jobs:
           Copy-Item EnableFullscreenOverlay.ps1 dist/EnableFullscreenOverlay.ps1
           Copy-Item EnableFullscreenOverlay.cmd dist/EnableFullscreenOverlay.cmd
           Copy-Item settings.example.ini dist/settings.example.ini
+          Copy-Item СПРАВКА.txt dist/СПРАВКА.txt
+          $helpText = Get-Content -Raw -Encoding UTF8 dist/СПРАВКА.txt
+          if ($helpText -notmatch 'F8' -or $helpText -notmatch 'Gizmo' -or $helpText -notmatch 'VALID') { throw 'Russian help is incomplete' }
           Copy-Item runtime-tools.sha256 dist/runtime-tools.sha256
           Copy-Item runtime-tools.sources.json dist/runtime-tools.sources.json
           Copy-Item InstallRuntimeTools.ps1 dist/InstallRuntimeTools.ps1
@@ -87,6 +94,7 @@ jobs:
             'dist/EnableFullscreenOverlay.ps1',
             'dist/EnableFullscreenOverlay.cmd',
             'dist/settings.example.ini',
+            'dist/СПРАВКА.txt',
             'dist/runtime-tools.sha256',
             'dist/runtime-tools.sources.json',
             'dist/InstallRuntimeTools.ps1',
@@ -121,6 +129,7 @@ jobs:
             dist/EnableFullscreenOverlay.ps1 `
             dist/EnableFullscreenOverlay.cmd `
             dist/settings.example.ini `
+            dist/СПРАВКА.txt `
             dist/runtime-tools.sha256 `
             dist/runtime-tools.sources.json `
             dist/InstallRuntimeTools.ps1 `

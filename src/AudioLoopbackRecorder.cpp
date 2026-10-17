@@ -104,6 +104,7 @@ bool AudioLoopbackRecorder::start(const std::filesystem::path& wavOutput,
     }
 
     wavOutput_ = wavOutput;
+    capturedDataBytes_.store(0);
     runtimeHealthy_.store(true);
     stopRequested_.store(false);
     running_.store(true);
@@ -169,6 +170,14 @@ bool AudioLoopbackRecorder::stop(std::wstring* error) {
                     ? L"WASAPI capture failed during recording"
                     : runtimeError_;
         }
+        return false;
+    }
+
+    // A header-only WAV has no captured audio data. Never pass it to FFmpeg
+    // as a successful audio track; the video can still be saved without it.
+    if (capturedDataBytes_.load() == 0) {
+        if (error)
+            *error = L"WASAPI captured no audio frames";
         return false;
     }
 
@@ -361,6 +370,7 @@ void AudioLoopbackRecorder::worker() {
                 }
 
                 totalDataBytes += bytes;
+                capturedDataBytes_.store(totalDataBytes);
                 if (totalDataBytes > 0xFFFFFFFFull) {
                     recordRuntimeFailure(
                         L"WASAPI WAV exceeded RIFF size limit");

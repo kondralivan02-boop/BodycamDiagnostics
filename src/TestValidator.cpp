@@ -16,10 +16,11 @@
 
 namespace {
 std::string narrowAscii(const std::wstring& text) {
-    std::string out;
-    out.reserve(text.size());
-    for (wchar_t c : text)
-        out.push_back(c >= 0 && c <= 0x7F ? static_cast<char>(c) : '?');
+    if (text.empty()) return {};
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (bytes <= 0) return {};
+    std::string out(static_cast<std::size_t>(bytes), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), bytes, nullptr, nullptr);
     return out;
 }
 
@@ -199,6 +200,19 @@ std::filesystem::path finalVideoPath(
     videoHasAudio = false;
     return {};
 }
+
+std::filesystem::path partVideoPath(const std::filesystem::path& sessionPath,
+                                    std::size_t part,
+                                    bool& hasAudio) {
+    const auto prefix = L"video_part_" + std::to_wstring(part) + L"_";
+    std::error_code ec;
+    auto path = sessionPath / (prefix + L"video_with_audio.mkv");
+    if (std::filesystem::is_regular_file(path, ec)) { hasAudio = true; return path; }
+    path = sessionPath / (prefix + L"video_without_audio.mkv");
+    hasAudio = false;
+    if (std::filesystem::is_regular_file(path, ec)) return path;
+    return {};
+}
 }
 
 TestValidationResult validateTestSession(
@@ -206,10 +220,22 @@ TestValidationResult validateTestSession(
     const MetricsSummary& summary,
     double expectedDurationSeconds,
     bool gameExitedUnexpectedly,
-    bool ffmpegTrustedForProbe) {
+    bool ffmpegTrustedForProbe,
+    double requestedVideoSeconds,
+    bool videoCaptureFailed,
+    const std::vector<double>& requestedIntervals,
+    const std::filesystem::path& ffmpegProbeExe) {
+
+    const auto durationProbeFfmpeg =
+        ffmpegProbeExe.empty()
+            ? defaultFfmpegPath(sessionPath)
+            : ffmpegProbeExe;
 
     TestValidationResult result;
     result.expectedDurationSeconds = expectedDurationSeconds;
+    result.requestedVideoSeconds = requestedVideoSeconds;
+    if (videoCaptureFailed)
+        result.issues.push_back(L"Запрошенная запись видео прервалась или не запустилась");
 
     if (gameExitedUnexpectedly)
         result.issues.push_back(L"Bodycam exited or crashed during the test");
@@ -236,25 +262,57 @@ TestValidationResult validateTestSession(
         finalVideoPath(sessionPath, videoHasAudio);
 
     ec.clear();
-    if (video.empty() ||
+    if (!requestedIntervals.empty()) {
+        result.videoDurationChecked = ffmpegTrustedForProbe;
+        for (std::size_t index = 0; index < requestedIntervals.size(); ++index) {
+            bool hasAudio = false;
+            const auto part = partVideoPath(sessionPath, index + 1, hasAudio);
+            ec.clear();
+            if (part.empty() || !std::filesystem::is_regular_file(part, ec) ||
+                std::filesystem::file_size(part, ec) == 0) {
+                result.issues.push_back(L"Отсутствует фрагмент видео " + std::to_wstring(index + 1));
+                result.videoDurationChecked = false;
+                continue;
+            }
+            if (!hasAudio) result.warnings.push_back(L"Фрагмент видео без игрового звука");
+            if (!ffmpegTrustedForProbe) {
+                result.issues.push_back(L"FFmpeg не проверен; длительность фрагмента неизвестна");
+                result.videoDurationChecked = false;
+                continue;
+            }
+            double duration = 0.0;
+            if (!probeVideoDurationSeconds(durationProbeFfmpeg, part, sessionPath, duration)) {
+                result.issues.push_back(L"Не удалось измерить длительность фрагмента " + std::to_wstring(index + 1));
+                result.videoDurationChecked = false;
+                continue;
+            }
+            result.videoDurationSeconds += duration;
+            if (requestedIntervals[index] > 0.0 && duration / requestedIntervals[index] < 0.90)
+                result.issues.push_back(L"Фрагмент видео " + std::to_wstring(index + 1) + L" короче запрошенного интервала");
+        }
+        if (requestedVideoSeconds > 0.0)
+            result.videoCoverageRatio = result.videoDurationSeconds / requestedVideoSeconds;
+    } else if (requestedVideoSeconds <= 0.0 && !videoCaptureFailed) {
+        result.warnings.push_back(L"Видео выключено пользователем; диагностический тест выполнен без записи");
+    } else if (requestedVideoSeconds > 0.0 && (video.empty() ||
         !std::filesystem::is_regular_file(video, ec) ||
-        std::filesystem::file_size(video, ec) == 0) {
+        std::filesystem::file_size(video, ec) == 0)) {
         result.issues.push_back(
             L"Final video is missing or empty");
-    } else {
+    } else if (requestedVideoSeconds > 0.0) {
         if (!videoHasAudio) {
             result.warnings.push_back(
                 L"Final video has no WASAPI audio; video capture remains valid");
         }
 
-        if (expectedDurationSeconds > 1.0) {
+        if (requestedVideoSeconds > 1.0) {
             if (!ffmpegTrustedForProbe) {
                 result.issues.push_back(
                     L"Final video duration was not probed because FFmpeg trust revalidation failed");
             } else {
                 result.videoDurationChecked =
                     probeVideoDurationSeconds(
-                        defaultFfmpegPath(sessionPath),
+                        durationProbeFfmpeg,
                         video,
                         sessionPath,
                         result.videoDurationSeconds);
@@ -262,7 +320,7 @@ TestValidationResult validateTestSession(
                 if (result.videoDurationChecked) {
                     result.videoCoverageRatio =
                         result.videoDurationSeconds /
-                        expectedDurationSeconds;
+                        requestedVideoSeconds;
 
                     if (result.videoCoverageRatio < 0.90) {
                         std::wstringstream ss;
@@ -314,6 +372,7 @@ bool writeTestValidationReport(
          << r.presentMonCoverageRatio << ",\n"
          << "  \"video_duration_checked\": "
          << (r.videoDurationChecked ? "true" : "false") << ",\n"
+         << "  \"requested_video_seconds\": " << r.requestedVideoSeconds << ",\n"
          << "  \"video_duration_seconds\": "
          << r.videoDurationSeconds << ",\n"
          << "  \"video_coverage_ratio\": "
@@ -348,8 +407,8 @@ bool writeTestValidationReport(
          << (r.videoDurationChecked ? "yes" : "no") << "\n"
          << "Video duration: "
          << r.videoDurationSeconds << " s\n"
-         << "Video coverage: "
-         << r.videoCoverageRatio * 100.0 << "%\n";
+         << "Requested video: " << r.requestedVideoSeconds << " s\n"
+         << "Video coverage: " << r.videoCoverageRatio * 100.0 << "%\n";
 
     for (const auto& issue : r.issues)
         text << "- " << narrowAscii(issue) << "\n";
@@ -375,4 +434,3 @@ bool writeTestValidationReport(
 
     return true;
 }
-

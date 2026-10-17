@@ -1,5 +1,7 @@
 #include "PresentMonController.h"
 #include <vector>
+#include <chrono>
+#include <exception>
 
 namespace {
 std::wstring quote(const std::wstring& value) {
@@ -36,7 +38,8 @@ bool PresentMonController::available() const {
 bool PresentMonController::launch(const std::wstring& arguments,
                                   HANDLE* processOut,
                                   std::wstring* error,
-                                  HANDLE stdOut) {
+                                  HANDLE stdOut,
+                                  HANDLE stdErr) {
     std::wstring command = quote(executable_.wstring()) + L" " + arguments;
     std::vector<wchar_t> mutableCommand(command.begin(), command.end());
     mutableCommand.push_back(L'\0');
@@ -50,7 +53,7 @@ bool PresentMonController::launch(const std::wstring& arguments,
 
     if (stdOut) {
         nullIn = openNullHandle(GENERIC_READ);
-        nullErr = openNullHandle(GENERIC_WRITE);
+        if (!stdErr) nullErr = openNullHandle(GENERIC_WRITE);
 
         if (nullIn == INVALID_HANDLE_VALUE ||
             nullErr == INVALID_HANDLE_VALUE) {
@@ -67,7 +70,7 @@ bool PresentMonController::launch(const std::wstring& arguments,
         si.dwFlags |= STARTF_USESTDHANDLES;
         si.hStdInput = nullIn;
         si.hStdOutput = stdOut;
-        si.hStdError = nullErr;
+        si.hStdError = stdErr ? stdErr : nullErr;
         inheritHandles = TRUE;
     }
 
@@ -85,6 +88,7 @@ bool PresentMonController::launch(const std::wstring& arguments,
         &si,
         &pi);
 
+    const DWORD launchError = ok ? ERROR_SUCCESS : GetLastError();
     if (nullIn && nullIn != INVALID_HANDLE_VALUE)
         CloseHandle(nullIn);
     if (nullErr && nullErr != INVALID_HANDLE_VALUE)
@@ -93,7 +97,7 @@ bool PresentMonController::launch(const std::wstring& arguments,
     if (!ok) {
         if (error)
             *error = L"CreateProcessW failed: " +
-                     std::to_wstring(GetLastError());
+                     std::to_wstring(launchError);
         return false;
     }
 
@@ -104,6 +108,97 @@ bool PresentMonController::launch(const std::wstring& arguments,
         CloseHandle(pi.hProcess);
 
     return true;
+}
+
+bool PresentMonController::beginDiagnostics(
+    const std::filesystem::path& csvOutput, HANDLE* writer, std::wstring* error) {
+    stderrOutput_.clear();
+    stderrReadError_ = ERROR_SUCCESS;
+    stopReader_.store(false);
+    const auto logPath = std::filesystem::path(csvOutput.wstring() + L".stderr.log");
+    stderrLog_ = CreateFileW(logPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+        nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (stderrLog_ == INVALID_HANDLE_VALUE) {
+        if (error) *error = L"Cannot create bounded PresentMon stderr log: " + std::to_wstring(GetLastError());
+        return false;
+    }
+    SECURITY_ATTRIBUTES sa{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    if (!CreatePipe(&stderrRead_, writer, &sa, 4096) ||
+        !SetHandleInformation(stderrRead_, HANDLE_FLAG_INHERIT, 0)) {
+        const DWORD code = GetLastError();
+        if (*writer) { CloseHandle(*writer); *writer = nullptr; }
+        finishDiagnostics();
+        if (error) *error = L"Cannot prepare PresentMon stderr pipe: " + std::to_wstring(code);
+        return false;
+    }
+    try {
+        stderrReader_ = std::thread(&PresentMonController::readDiagnostics, this);
+    } catch (const std::exception&) {
+        CloseHandle(*writer); *writer = nullptr;
+        finishDiagnostics();
+        if (error) *error = L"Cannot start PresentMon stderr reader";
+        return false;
+    }
+    return true;
+}
+
+void PresentMonController::readDiagnostics() noexcept {
+    char buffer[4096];
+    // Never wait for pipe EOF: a descendant can inherit the writer. On shutdown
+    // drain at most 64 KiB of pending bytes, then close our read end.
+    std::size_t shutdownBudget = 64 * 1024;
+    for (;;) {
+        const bool stopping = stopReader_.load();
+        DWORD available = 0;
+        if (!PeekNamedPipe(stderrRead_, nullptr, 0, nullptr, &available, nullptr)) {
+            const DWORD code = GetLastError();
+            if (code != ERROR_BROKEN_PIPE) stderrReadError_ = code;
+            break;
+        }
+        if (!available) {
+            if (stopping) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+        if (stopping && !shutdownBudget) break;
+        DWORD count = (std::min)(available, static_cast<DWORD>(sizeof(buffer)));
+        if (stopping) count = (std::min)(count, static_cast<DWORD>(shutdownBudget));
+        DWORD got = 0;
+        // Sole reader; bytes reported by Peek cannot be consumed by another
+        // thread, so this reads available bytes without waiting for the writer.
+        if (!ReadFile(stderrRead_, buffer, count, &got, nullptr) || !got) {
+            const DWORD code = GetLastError();
+            if (code != ERROR_BROKEN_PIPE) stderrReadError_ = code;
+            break;
+        }
+        stderrOutput_.append(std::string_view(buffer, got));
+        if (stopping) shutdownBudget -= got;
+    }
+}
+
+std::wstring PresentMonController::finishDiagnostics() {
+    stopReader_.store(true);
+    if (stderrReader_.joinable()) stderrReader_.join();
+    if (stderrRead_) { CloseHandle(stderrRead_); stderrRead_ = nullptr; }
+    const auto text = stderrOutput_.text();
+    DWORD logError = ERROR_SUCCESS;
+    if (stderrLog_ != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        if (!WriteFile(stderrLog_, text.data(), static_cast<DWORD>(text.size()), &written, nullptr))
+            logError = GetLastError();
+        else if (written != text.size()) logError = ERROR_WRITE_FAULT;
+        else if (!FlushFileBuffers(stderrLog_)) logError = GetLastError();
+        CloseHandle(stderrLog_); stderrLog_ = INVALID_HANDLE_VALUE;
+    }
+    const auto display = stderrOutput_.text(4096);
+    const int length = MultiByteToWideChar(CP_UTF8, 0, display.data(), static_cast<int>(display.size()), nullptr, 0);
+    std::wstring result(length > 0 ? static_cast<std::size_t>(length) : 0, L' ');
+    if (length > 0) MultiByteToWideChar(CP_UTF8, 0, display.data(), static_cast<int>(display.size()), result.data(), length);
+    for (auto& c : result) if (c < 32 || (c >= 127 && c <= 159)) c = L' ';
+    result = result.empty() ? L" | stderr: (no output)" : L" | stderr: " + result;
+    if (stderrReadError_ != ERROR_SUCCESS) result += L" | stderr read failed: " + std::to_wstring(stderrReadError_);
+    if (logError != ERROR_SUCCESS) result += L" | stderr log write failed: " + std::to_wstring(logError);
+    return result;
 }
 
 bool PresentMonController::start(DWORD targetPid,
@@ -147,6 +242,9 @@ bool PresentMonController::start(DWORD targetPid,
     sa.nLength = sizeof(sa);
     sa.bInheritHandle = TRUE;
 
+    HANDLE stderrWriter = nullptr;
+    if (!beginDiagnostics(csvOutput, &stderrWriter, error)) return false;
+
     HANDLE csvHandle = CreateFileW(
         csvOutput.c_str(),
         GENERIC_WRITE,
@@ -157,9 +255,10 @@ bool PresentMonController::start(DWORD targetPid,
         nullptr);
 
     if (csvHandle == INVALID_HANDLE_VALUE) {
-        if (error)
-            *error = L"Cannot create PresentMon CSV: " +
-                     std::to_wstring(GetLastError());
+        const DWORD code = GetLastError();
+        CloseHandle(stderrWriter);
+        const auto details = finishDiagnostics();
+        if (error) *error = L"Cannot create PresentMon CSV: " + std::to_wstring(code) + details;
         return false;
     }
 
@@ -171,12 +270,16 @@ bool PresentMonController::start(DWORD targetPid,
         L" --terminate_on_proc_exit";
 
     const bool started =
-        launch(args, &process_, error, csvHandle);
+        launch(args, &process_, error, csvHandle, stderrWriter);
+    CloseHandle(stderrWriter);
 
     CloseHandle(csvHandle);
 
-    if (!started)
+    if (!started) {
+        const auto details = finishDiagnostics();
+        if (error) *error += details;
         return false;
+    }
 
     const DWORD startupWait =
         WaitForSingleObject(process_, 500);
@@ -187,10 +290,11 @@ bool PresentMonController::start(DWORD targetPid,
         CloseHandle(process_);
         process_ = nullptr;
 
+        const auto details = finishDiagnostics();
         if (error) {
             *error =
                 L"PresentMon exited during startup with code " +
-                std::to_wstring(exitCode);
+                std::to_wstring(exitCode) + details;
         }
         return false;
     }
@@ -202,10 +306,11 @@ bool PresentMonController::start(DWORD targetPid,
         CloseHandle(process_);
         process_ = nullptr;
 
+        const auto details = finishDiagnostics();
         if (error) {
             *error =
                 L"PresentMon startup liveness check failed: " +
-                std::to_wstring(waitError);
+                std::to_wstring(waitError) + details;
         }
         return false;
     }
@@ -230,10 +335,11 @@ bool PresentMonController::healthy(std::wstring* event) {
         CloseHandle(process_);
         process_ = nullptr;
 
+        const auto details = finishDiagnostics();
         if (event) {
             *event =
                 L"PresentMon exited during capture with code " +
-                std::to_wstring(exitCode);
+                std::to_wstring(exitCode) + details;
         }
         return false;
     }
@@ -242,16 +348,20 @@ bool PresentMonController::healthy(std::wstring* event) {
     CloseHandle(process_);
     process_ = nullptr;
 
+    const auto details = finishDiagnostics();
     if (event) {
         *event =
             L"PresentMon capture health check failed: " +
-            std::to_wstring(waitError);
+            std::to_wstring(waitError) + details;
     }
     return false;
 }
 
 void PresentMonController::stop() {
-    if (!process_) return;
+    if (!process_) {
+        if (stderrReader_.joinable() || stderrRead_ || stderrLog_ != INVALID_HANDLE_VALUE) finishDiagnostics();
+        return;
+    }
 
     HANDLE stopper = nullptr;
     launch(
@@ -268,4 +378,5 @@ void PresentMonController::stop() {
     WaitForSingleObject(process_, 2500);
     CloseHandle(process_);
     process_ = nullptr;
+    finishDiagnostics();
 }

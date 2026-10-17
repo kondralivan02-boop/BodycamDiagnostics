@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace {
@@ -205,7 +207,6 @@ bool RecorderController::start(const std::filesystem::path& outputDirectory,
     }
 
     outputDirectory_ = outputDirectory;
-    restartCount_ = 0;
     disabled_ = false;
 
     std::error_code ec;
@@ -231,42 +232,18 @@ bool RecorderController::maintain(std::wstring* event) {
     GetExitCodeProcess(process_, &exitCode);
     closeChildHandles();
 
-    constexpr unsigned kMaxRestarts = 6;
-    if (restartCount_ >= kMaxRestarts) {
+    std::ifstream log(outputDirectory_ / L"video_capture.log", std::ios::binary);
+    const std::string logText((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
+    if (logText.find("887a0026") != std::string::npos || logText.find("0x887A0026") != std::string::npos) {
         disabled_ = true;
-        if (event) {
-            *event =
-                L"NVENC video stopped after repeated FFmpeg exits"
-                L"  •  last code " +
-                std::to_wstring(exitCode) +
-                L"  •  see video_capture.log";
-        }
+        if (event) *event = L"Захват экрана потерян: графическая или удалённая сессия была сброшена (0x887A0026)";
         return false;
     }
 
-    ++restartCount_;
-
-    std::wstring restartError;
-    if (!launchCapture(&restartError)) {
-        disabled_ = true;
-        if (event) {
-            *event =
-                L"NVENC video restart failed"
-                L"  •  " + restartError;
-        }
-        return false;
-    }
-
-    if (event) {
-        *event =
-            L"NVENC video recovered"
-            L"  •  FFmpeg exit code " +
-            std::to_wstring(exitCode) +
-            L"  •  restart " +
-            std::to_wstring(restartCount_);
-    }
-
-    return true;
+    disabled_ = true;
+    if (event) *event = L"Запись видео остановлена: FFmpeg завершился с кодом " +
+        std::to_wstring(exitCode) + L"; см. video_capture.log";
+    return false;
 }
 
 void RecorderController::stop() {

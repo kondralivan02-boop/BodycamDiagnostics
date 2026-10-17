@@ -279,7 +279,8 @@ std::filesystem::path resolveRuntimeTool(
 ToolPreflightResult runToolPreflight(
     const std::filesystem::path& presentMonExe,
     const std::filesystem::path& ffmpegExe,
-    const std::filesystem::path& hashManifest) {
+    const std::filesystem::path& hashManifest,
+    bool checkVideo) {
 
     ToolPreflightResult r;
     std::error_code ec;
@@ -300,7 +301,7 @@ ToolPreflightResult runToolPreflight(
                 hashManifest);
     }
 
-    if (r.ffmpegFound &&
+    if (checkVideo && r.ffmpegFound &&
         r.hashManifestTrusted) {
         r.ffmpegTrusted =
             runtimeToolTrusted(
@@ -320,9 +321,9 @@ ToolPreflightResult runToolPreflight(
     d += L"PresentMon: ";
     d += r.presentMonFound ? (r.presentMonTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
     d += L"\nFFmpeg: ";
-    d += r.ffmpegFound ? (r.ffmpegTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING";
+    d += checkVideo ? (r.ffmpegFound ? (r.ffmpegTrusted ? L"OK (verified)" : L"FOUND (hash mismatch)") : L"MISSING") : L"SKIPPED (video off)";
 
-    if (r.ffmpegFound && r.ffmpegTrusted) {
+    if (checkVideo && r.ffmpegFound && r.ffmpegTrusted) {
         std::string encoders;
         if (runAndCapture(ffmpegExe, L"-hide_banner -encoders", encoders))
             r.nvencAvailable = containsAscii(encoders, "h264_nvenc");

@@ -1,5 +1,6 @@
 #include "MetricsCalculator.h"
 #include "AtomicOutputFile.h"
+#include "FrameContinuity.h"
 
 #include <Windows.h>
 
@@ -223,6 +224,11 @@ MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
 
     std::vector<double> frameTimes;
     frameTimes.reserve(120000);
+    const auto timestampIt = std::find(headers.begin(), headers.end(), "CPUStartDateTime");
+    const auto modeIt = std::find(headers.begin(), headers.end(), "PresentMode");
+    const auto timeIndex = static_cast<std::size_t>(std::distance(headers.begin(), timestampIt));
+    const auto modeIndex = static_cast<std::size_t>(std::distance(headers.begin(), modeIt));
+    FrameContinuity continuity;
 
     std::string line;
     while (std::getline(in, line)) {
@@ -233,9 +239,13 @@ MetricsSummary calculateMetrics(const std::filesystem::path& presentMonCsv) {
         double frameTimeMs = 0.0;
         if (!tryParsePositiveDouble(fields[frameTimeIndex], frameTimeMs)) continue;
 
+        if (timeIndex < fields.size() && !continuity.accept(fields[timeIndex], frameTimeMs,
+                modeIndex < fields.size() ? fields[modeIndex] : "")) continue;
         if (frameTimeMs > 10000.0) continue;
         frameTimes.push_back(frameTimeMs);
     }
+    result.captureGaps = continuity.gapCount();
+    result.captureGapIntervals = continuity.gaps();
 
     if (frameTimes.size() < 2) {
         result.error = L"Not enough valid frame-time samples in presentmon.csv";
@@ -289,6 +299,7 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "{\n"
          << "  \"frame_time_column\": \"" << jsonEscape(s.frameTimeColumn) << "\",\n"
          << "  \"total_frames\": " << s.totalFrames << ",\n"
+         << "  \"capture_gaps\": " << s.captureGaps << ",\n"
          << "  \"duration_seconds\": " << s.durationSeconds << ",\n"
          << "  \"average_fps\": " << s.averageFps << ",\n"
          << "  \"average_frame_time_ms\": " << s.averageFrameTimeMs << ",\n"
@@ -302,8 +313,14 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "  \"stutters_over_50ms\": " << s.stuttersOver50Ms << ",\n"
          << "  \"stutters_over_100ms\": " << s.stuttersOver100Ms << ",\n"
          << "  \"stutters_over_250ms\": " << s.stuttersOver250Ms << ",\n"
-         << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << "\n"
-         << "}\n";
+         << "  \"max_frame_time_ms\": " << s.maxFrameTimeMs << ",\n"
+         << "  \"capture_gap_intervals\": [";
+    for (std::size_t i = 0; i < s.captureGapIntervals.size(); ++i) {
+        if (i) json << ',';
+        json << "{\"type\":\"CAPTURE_GAP\",\"from\":\"" << jsonEscape(s.captureGapIntervals[i].start)
+             << "\",\"to\":\"" << jsonEscape(s.captureGapIntervals[i].end) << "\"}";
+    }
+    json << "]\n}\n";
     AtomicOutputFile textFile(textOutput);
     auto& text = textFile.stream();
     if (!textFile.isOpen()) {
@@ -321,6 +338,7 @@ bool writeMetricsReport(const MetricsSummary& s,
          << "1% low: " << s.onePercentLowFps << " FPS\n"
          << "0.1% low: " << s.pointOnePercentLowFps << " FPS\n"
          << "Average frametime: " << s.averageFrameTimeMs << " ms\n"
+         << "Capture gaps: " << s.captureGaps << "\n"
          << "P50 / P95 / P99 / P99.9: "
          << s.p50FrameTimeMs << " / " << s.p95FrameTimeMs << " / "
          << s.p99FrameTimeMs << " / " << s.p999FrameTimeMs << " ms\n"

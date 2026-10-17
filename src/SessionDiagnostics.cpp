@@ -103,6 +103,7 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
     result.stutterCorrelationAvailable = stutters.valid;
 
     result.totalFrames = metrics.totalFrames;
+    result.captureGaps = metrics.captureGaps;
     result.durationSeconds = metrics.durationSeconds;
     result.averageFps = metrics.averageFps;
     result.onePercentLowFps = metrics.onePercentLowFps;
@@ -126,8 +127,6 @@ SessionDiagnosticsResult analyzeSessionDiagnostics(
         if (event.telemetryMatched)
             ++result.telemetryMatchedStutters;
 
-        if (event.frameTimeMs > result.maxFrameTimeMs)
-            result.maxFrameTimeMs = event.frameTimeMs;
 
         for (const auto& signal : event.signals)
             ++signalCounts[signal];
@@ -230,6 +229,7 @@ bool writeSessionDiagnosticsReport(
 
     json << "  \"metrics\": {"
          << "\"total_frames\":" << result.totalFrames
+         << ",\"capture_gaps\":" << result.captureGaps
          << ",\"duration_s\":" << result.durationSeconds
          << ",\"average_fps\":" << result.averageFps
          << ",\"one_percent_low_fps\":" << result.onePercentLowFps
@@ -387,6 +387,7 @@ bool writeSessionDiagnosticsReport(
     text << "1% Low: " << result.onePercentLowFps << " FPS\n";
     text << "0.1% Low: " << result.pointOnePercentLowFps << " FPS\n";
     text << "Max frame time: " << result.maxFrameTimeMs << " ms\n";
+    text << "CAPTURE_GAP: " << result.captureGaps << "\n";
     text << "Stutters >=100 ms: " << result.stuttersOver100Ms << "\n";
     text << "Stutters >=250 ms: " << result.stuttersOver250Ms << "\n";
     text << "Correlated stutters: " << result.correlatedStutters << "\n";
@@ -475,4 +476,3 @@ bool writeSessionDiagnosticsReport(
 
     return true;
 }
-

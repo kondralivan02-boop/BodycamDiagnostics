@@ -67,8 +67,19 @@ int wmain(int argc, wchar_t** argv) {
               "recorder must report terminal failure when restart fails");
         check(!controller.running(),
               "terminal recorder failure must leave recorder unavailable");
-        check(event.find(L"restart failed") != std::wstring::npos,
-              "terminal recorder failure must report restart failure");
+        check(event.find(L"Захват экрана потерян") != std::wstring::npos,
+              "desktop duplication loss must have a Russian explanation");
+    }
+
+    {
+        RecorderController controller(recoveryFailure);
+        std::wstring error;
+        check(controller.start(root / L"video-exit", &error), "exit fixture must start");
+        Sleep(600);
+        std::wstring event;
+        check(!controller.maintain(&event), "an FFmpeg exit must close the requested recording interval");
+        check(event.find(L"остановлена") != std::wstring::npos,
+              "ordinary FFmpeg exit must be explained in Russian");
     }
 
     std::filesystem::remove_all(root, ec);

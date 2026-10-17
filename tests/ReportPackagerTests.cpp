@@ -229,15 +229,20 @@ int wmain(int argc, wchar_t** argv) {
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
     std::filesystem::create_directories(session / L"bodycam_logs");
+    std::filesystem::create_directories(session / L"video" / L"part_1");
 
     constexpr const char* kSummary = "summary evidence";
     constexpr const char* kFfmpeg = "ffmpeg evidence";
     constexpr const char* kGameLog = "game log evidence";
+    constexpr const char* kPresentMon = "PresentMon exit 6 diagnostic";
+    std::ofstream(session / L"presentmon.csv.stderr.log", std::ios::binary) << kPresentMon;
 
     std::ofstream(session / L"summary.txt", std::ios::binary)
         << kSummary;
     std::ofstream(session / L"video_capture.log", std::ios::binary)
         << kFfmpeg;
+    std::ofstream(session / L"video" / L"part_1" / L"video_capture.log", std::ios::binary)
+        << "failed part evidence";
     std::ofstream(
         session / L"bodycam_logs" / L"Bodycam.log",
         std::ios::binary)
@@ -276,13 +281,16 @@ int wmain(int argc, wchar_t** argv) {
 
     const auto bytes = readAll(output);
     const auto entries = parseCentralDirectory(bytes);
+    verifyStoredEntry(bytes, entries, "presentmon.csv.stderr.log", kPresentMon);
 
-    check(entries.size() == 3u,
+    check(entries.size() == 5u,
           "unexpected number of ZIP entries");
     verifyStoredEntry(
         bytes, entries, "summary.txt", kSummary);
     verifyStoredEntry(
         bytes, entries, "video_capture.log", kFfmpeg);
+    verifyStoredEntry(
+        bytes, entries, "video/part_1/video_capture.log", "failed part evidence");
     verifyStoredEntry(
         bytes,
         entries,

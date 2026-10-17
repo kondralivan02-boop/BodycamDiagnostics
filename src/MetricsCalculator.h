@@ -3,11 +3,15 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <vector>
+#include "FrameContinuity.h"
 
 struct MetricsSummary {
     bool valid = false;
     std::string frameTimeColumn;
     std::size_t totalFrames = 0;
+    std::size_t captureGaps = 0;
+    std::vector<CaptureGap> captureGapIntervals;
     double durationSeconds = 0.0;
     double averageFps = 0.0;
     double averageFrameTimeMs = 0.0;

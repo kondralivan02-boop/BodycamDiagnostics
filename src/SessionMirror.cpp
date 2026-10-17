@@ -151,6 +151,15 @@ bool SessionMirror::syncOnce(bool finalPass) {
         L"bodycam_logs_manifest.json",
         L"environment_capabilities.json",
         L"windows_events.json",
+        L"infrastructure_evidence.json",
+        L"infrastructure_evidence.txt",
+        L"recording_intervals.json",
+        L"validation.json",
+        L"validation.txt",
+        L"performance_health.json",
+        L"performance_health.txt",
+        L"stutter_events.json",
+        L"stutter_events.txt",
         L"session_diagnostics.json",
         L"session_diagnostics.txt",
         L"session.log",
@@ -182,6 +191,24 @@ bool SessionMirror::syncOnce(bool finalPass) {
         }
     }
 
+    // FFmpeg capture logs move out of their raw part directories after mux.
+    // Mirror them throughout the session, even before the final report ZIP
+    // exists. Completed MKVs remain final-pass only, as before.
+    std::error_code partEc;
+    for (std::filesystem::directory_iterator it(sourceSession_, partEc), end;
+         !partEc && it != end; it.increment(partEc)) {
+        if (!it->is_regular_file(partEc)) continue;
+        const auto filename = it->path().filename();
+        const auto name = filename.wstring();
+        if (name.rfind(L"video_part_", 0) != 0) continue;
+
+        const bool captureLog = name.ends_with(L"_capture.log");
+        const bool completedVideo = finalPass && filename.extension() == L".mkv";
+        if ((captureLog || completedVideo) && !copyRelativeFile(filename))
+            return false;
+    }
+    if (partEc) { recordFailure(partEc.value()); return false; }
+
     const auto videoDir = sourceSession_ / L"video";
     std::error_code ec;
     const bool videoDirExists =
@@ -207,12 +234,23 @@ bool SessionMirror::syncOnce(bool finalPass) {
         return true;
     }
 
-    for (std::filesystem::directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
+    for (std::filesystem::recursive_directory_iterator it(videoDir, ec), end; !ec && it != end; it.increment(ec)) {
         const auto& entry = *it;
         if (!entry.is_regular_file(ec)) continue;
-        if (entry.path().extension() != L".mkv") continue;
+        const bool captureLog = entry.path().filename() == L"video_capture.log";
+        if (!captureLog && entry.path().extension() != L".mkv") continue;
 
-        const auto relative = std::filesystem::path(L"video") / entry.path().filename();
+        const auto relative = std::filesystem::relative(entry.path(), sourceSession_, ec);
+        if (ec) { recordFailure(ec.value()); return false; }
+
+        // Include logs from part_N and failed-start directories in periodic
+        // mirror passes. On abrupt Gizmo termination there may be no final
+        // ZIP, so these logs must not depend on successful session shutdown.
+        if (captureLog) {
+            if (!copyRelativeFile(relative)) return false;
+            continue;
+        }
+
         const auto size = entry.file_size(ec);
         if (ec || size == 0) {
             ec.clear();
@@ -262,4 +300,3 @@ void SessionMirror::worker() {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
-

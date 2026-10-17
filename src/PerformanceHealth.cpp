@@ -1,5 +1,6 @@
 #include "PerformanceHealth.h"
 #include "AtomicOutputFile.h"
+#include <Windows.h>
 
 #include <fstream>
 #include <iomanip>
@@ -7,10 +8,11 @@
 
 namespace {
 std::string narrowAscii(const std::wstring& text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const wchar_t c : text)
-        out.push_back(c >= 0 && c <= 0x7F ? static_cast<char>(c) : '?');
+    if (text.empty()) return {};
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    if (bytes <= 0) return {};
+    std::string out(static_cast<std::size_t>(bytes), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), out.data(), bytes, nullptr, nullptr);
     return out;
 }
 
@@ -42,6 +44,11 @@ PerformanceHealthResult analyzePerformanceHealth(const MetricsSummary& summary) 
 
     result.maxFrameTimeMs = summary.maxFrameTimeMs;
     result.severeStalls = summary.stuttersOver250Ms;
+
+    if (summary.captureGaps > 0) {
+        result.clean = false;
+        result.findings.push_back(L"CAPTURE_GAP: потеря кадров PresentMon (" + std::to_wstring(summary.captureGaps) + L"); сравнение FPS ограничено");
+    }
 
     if (summary.maxFrameTimeMs >= 250.0) {
         result.clean = false;

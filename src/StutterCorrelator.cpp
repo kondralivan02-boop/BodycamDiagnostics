@@ -1,4 +1,5 @@
 #include "StutterCorrelator.h"
+#include "FrameContinuity.h"
 #include "AtomicOutputFile.h"
 
 #include <Windows.h>
@@ -775,6 +776,7 @@ StutterCorrelationResult correlateStutterEvents(
 
     std::string line;
     std::string previousPresentMode;
+    FrameContinuity continuity;
     unsigned long long presentMonBaseTime100ns = 0;
     bool presentMonBaseSet = false;
 
@@ -803,6 +805,11 @@ StutterCorrelationResult correlateStutterEvents(
         if (!parseDouble(fields, frameTimeIndex, frameTimeMs)) {
             if (!currentPresentMode.empty())
                 previousPresentMode = currentPresentMode;
+            continue;
+        }
+
+        if (!continuity.accept(fields[timeIndex], frameTimeMs, currentPresentMode)) {
+            if (!currentPresentMode.empty()) previousPresentMode = currentPresentMode;
             continue;
         }
 
@@ -1172,4 +1179,3 @@ bool writeStutterCorrelationReport(
 
     return true;
 }
-

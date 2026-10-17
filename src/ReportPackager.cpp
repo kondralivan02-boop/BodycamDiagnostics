@@ -424,7 +424,7 @@ bool packageSessionReport(
     const std::filesystem::path& outputZip,
     std::wstring* error) {
 
-    static constexpr std::array<const wchar_t*, 22>
+    static constexpr std::array<const wchar_t*, 24>
         kReportFiles = {
             L"build_info.json",
             L"bodycam_logs_manifest.json",
@@ -434,8 +434,10 @@ bool packageSessionReport(
             L"infrastructure_evidence.txt",
             L"session.log",
             L"session.json",
+            L"recording_intervals.json",
             L"system.json",
             L"presentmon.csv",
+            L"presentmon.csv.stderr.log",
             L"telemetry.csv",
             L"video_capture.log",
             L"summary.json",
@@ -467,6 +469,39 @@ bool packageSessionReport(
                 entries)) {
             if (error)
                 *error = L"Cannot build report file list";
+            return false;
+        }
+    }
+
+    for (std::filesystem::directory_iterator it(sessionDirectory, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        const auto filename = it->path().filename().wstring();
+        if (filename.rfind(L"video_part_", 0) == 0 &&
+            filename.size() >= 12 &&
+            filename.ends_with(L"_capture.log") &&
+            !appendRegularFile(sessionDirectory, it->path(), entries)) {
+            if (error) *error = L"Cannot include video capture log";
+            return false;
+        }
+    }
+    if (ec) {
+        if (error) *error = L"Cannot enumerate video capture logs";
+        return false;
+    }
+
+    const auto rawVideoDirectory = sessionDirectory / L"video";
+    ec.clear();
+    if (std::filesystem::is_directory(rawVideoDirectory, ec)) {
+        for (std::filesystem::recursive_directory_iterator it(rawVideoDirectory, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            if (it->path().filename() == L"video_capture.log" &&
+                !appendRegularFile(sessionDirectory, it->path(), entries)) {
+                if (error) *error = L"Cannot include raw video capture log";
+                return false;
+            }
+        }
+        if (ec) {
+            if (error) *error = L"Cannot enumerate raw video capture logs";
             return false;
         }
     }

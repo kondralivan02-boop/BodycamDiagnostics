@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -27,6 +28,7 @@ private:
     std::atomic_bool running_{false};
     std::atomic_bool runtimeHealthy_{true};
     std::atomic_bool stopRequested_{false};
+    std::atomic<std::uint64_t> capturedDataBytes_{0};
     std::thread thread_;
 
     std::mutex readyMutex_;

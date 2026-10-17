@@ -38,24 +38,89 @@ int main() {
             << "muxed video with audio";
         std::ofstream(source / L"video_without_audio.mkv", std::ios::binary)
             << "finalized video without audio";
+        std::filesystem::create_directories(source / L"video" / L"part_1");
+        std::ofstream(source / L"video" / L"part_1" / L"video_00000.mkv", std::ios::binary)
+            << "raw recording evidence";
+        std::ofstream(source / L"video_part_1_video_without_audio.mkv", std::ios::binary)
+            << "separate recording part";
+        std::ofstream(source / L"video_part_1_capture.log", std::ios::binary)
+            << "preserved final FFmpeg log";
+        std::ofstream(source / L"recording_intervals.json", std::ios::binary)
+            << "interval report evidence";
+        std::ofstream(source / L"validation.json", std::ios::binary)
+            << "validation evidence";
+        std::ofstream(source / L"stutter_events.json", std::ios::binary)
+            << "stutter evidence";
+        std::ofstream(source / L"performance_health.json", std::ios::binary)
+            << "performance evidence";
+        const auto activeLog =
+            source / L"video" / L"part_1" / L"video_capture.log";
+        const auto failedLog =
+            source / L"video" / L"part_1_failed_start_123" / L"video_capture.log";
+        std::filesystem::create_directories(failedLog.parent_path());
+        std::ofstream(activeLog, std::ios::binary) << "active FFmpeg log";
+        std::ofstream(failedLog, std::ios::binary) << "failed-start FFmpeg log";
 
         SessionMirror mirror(source, mirrorRoot);
         std::wstring startError;
         check(mirror.start(&startError),
               "mirror must start for final video sync");
+
+        // Logs must be mirrored during capture, not only by stop() or ZIP.
+        const auto target = mirror.targetPath();
+        bool logsMirroredWhileRunning = false;
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            if (std::filesystem::is_regular_file(
+                    target / L"video" / L"part_1" / L"video_capture.log") &&
+                std::filesystem::is_regular_file(
+                    target / L"video" / L"part_1_failed_start_123" /
+                    L"video_capture.log") &&
+                std::filesystem::is_regular_file(
+                    target / L"video_part_1_capture.log")) {
+                logsMirroredWhileRunning = true;
+                break;
+            }
+            Sleep(100);
+        }
+        check(logsMirroredWhileRunning,
+              "active and failed-start FFmpeg logs must be mirrored before stop");
+
         std::wstring stopError;
         check(mirror.stop(&stopError),
               "final mirror sync must succeed");
         check(stopError.empty(),
               "successful final mirror sync must not report an error");
-
-        const auto target = mirror.targetPath();
+        check(!std::filesystem::exists(source / L"report_bundle.zip"),
+              "test must not rely on successful report ZIP creation");
+        check(std::filesystem::is_regular_file(target / L"recording_intervals.json"),
+              "recording intervals must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"validation.json"),
+              "validation details must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"stutter_events.json"),
+              "stutter evidence must survive without report ZIP");
+        check(std::filesystem::is_regular_file(target / L"performance_health.json"),
+              "performance evidence must survive without report ZIP");
+        check(std::filesystem::file_size(target / L"video_part_1_capture.log") > 0,
+              "finalized FFmpeg log must survive without report ZIP");
+        check(std::filesystem::file_size(
+                  target / L"video" / L"part_1" / L"video_capture.log") > 0,
+              "mirrored active log must contain evidence");
+        check(std::filesystem::file_size(
+                  target / L"video" / L"part_1_failed_start_123" /
+                  L"video_capture.log") > 0,
+              "mirrored failed-start log must contain evidence");
         check(std::filesystem::is_regular_file(
                   target / L"video_with_audio.mkv"),
               "final video with audio must be mirrored");
         check(std::filesystem::is_regular_file(
                   target / L"video_without_audio.mkv"),
               "final video without audio must be mirrored");
+        check(std::filesystem::is_regular_file(
+                  target / L"video_part_1_video_without_audio.mkv"),
+              "separate recording part must be mirrored");
+        check(std::filesystem::is_regular_file(
+                  target / L"video" / L"part_1" / L"video_00000.mkv"),
+              "nested raw recording must survive through the mirror");
 
         {
             std::ofstream(
