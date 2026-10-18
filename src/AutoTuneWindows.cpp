@@ -3,7 +3,7 @@
 #include "AutoTuneFileIO.h"
 #include "ProcessFinder.h"
 #include <Windows.h>
-#include <ShlObj.h>
+#include <shlobj.h>
 #include <dxgi.h>
 #include <exception>
 #include <algorithm>
