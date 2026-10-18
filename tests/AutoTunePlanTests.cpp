@@ -66,6 +66,6 @@ int main() {
         "sg.EffectsQuality=3\n[Other]\nsg.ShadowQuality=99\n",
         Preset::Performance);
     CHECK(validSections.supported);
-    CHECK(validSections.updated.find("[Other]\\nsg.ShadowQuality=99\\n") != std::string::npos);
+    CHECK(validSections.updated.find("[Other]\nsg.ShadowQuality=99\n") != std::string::npos);
     std::cout << "AutoTunePlanTests PASS\n";
 }
