@@ -101,7 +101,10 @@ bool atomicReplace(const std::filesystem::path& target,
                    const std::string& expected, const std::string& replacement,
                    std::wstring& error) {
     std::string now;
-    if (!readSmall(target, now) || now != expected || !noReparse(target)) {
+    const DWORD originalAttributes = GetFileAttributesW(target.c_str());
+    if (originalAttributes == INVALID_FILE_ATTRIBUTES ||
+        (originalAttributes & FILE_ATTRIBUTE_READONLY) != 0 ||
+        !readSmall(target, now) || now != expected || !noReparse(target)) {
         error = L"Конфигурация изменилась после предварительного просмотра. Повторите попытку.";
         return false;
     }
@@ -153,6 +156,12 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
     const auto file = configFile();
     if (file.empty() || !noReparse(file)) {
         message(owner, L"Не найден единственный доступный GameUserSettings.ini. Поддерживаются Window, Windows и WindowsNoEditor. Если файлов несколько, выбор намеренно блокируется. Права доступа не обходятся.");
+        return;
+    }
+    const DWORD gameAttributes = GetFileAttributesW(file.c_str());
+    if (gameAttributes == INVALID_FILE_ATTRIBUTES ||
+        (gameAttributes & FILE_ATTRIBUTE_READONLY) != 0) {
+        message(owner, L"Файл конфигурации игры недоступен или помечен «только чтение». AutoTune не будет обходить ограничения записи.");
         return;
     }
     std::string old;

@@ -67,5 +67,23 @@ int main() {
         Preset::Performance);
     CHECK(validSections.supported);
     CHECK(validSections.updated.find("[Other]\nsg.ShadowQuality=99\n") != std::string::npos);
+    // Quality must not silently downgrade Shadows from UE scalability 3 to 2.
+    const std::string qualityIni =
+        "[ScalabilityGroups]\nsg.ShadowQuality=3\nsg.TextureQuality=3\n"
+        "sg.PostProcessQuality=3\nsg.EffectsQuality=3\n";
+    const auto quality = prepare(qualityIni, Preset::Quality);
+    CHECK(quality.supported);
+    CHECK(quality.changes.empty());
+    CHECK(quality.updated == qualityIni);
+    // The actual Bodycam setting sg.ResolutionQuality is not rewritten
+    // until game-version semantics and user monitor data are confirmed.
+    const auto unknown = prepare(
+        "[ScalabilityGroups]\nsg.ResolutionQuality=0\nsg.ShadowQuality=3\n"
+        "sg.TextureQuality=3\nsg.PostProcessQuality=3\nsg.EffectsQuality=3\n"
+        "[/Script/Bodycam.CustomGameUserSettings]\nUseSystemsConfig=True\n",
+        Preset::Performance);
+    CHECK(unknown.supported);
+    CHECK(unknown.updated.find("sg.ResolutionQuality=0") != std::string::npos);
+    CHECK(unknown.updated.find("UseSystemsConfig=True") != std::string::npos);
     std::cout << "AutoTunePlanTests PASS\n";
 }

@@ -44,7 +44,7 @@ struct Setting { const char* key; std::array<int, 3> values; };
 inline constexpr std::array<Setting, 10> kKnownSettings{{
     {"sg.viewdistancequality", {2, 2, 3}},
     {"sg.antialiasingquality", {2, 2, 3}},
-    {"sg.shadowquality", {1, 2, 2}},
+    {"sg.shadowquality", {1, 2, 3}},
     {"sg.globalilluminationquality", {1, 2, 3}},
     {"sg.reflectionquality", {1, 2, 3}},
     {"sg.postprocessquality", {1, 2, 3}},
