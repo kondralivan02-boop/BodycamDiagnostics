@@ -1,0 +1,2 @@
+12552b2e699ecc30cd010f2e294c5c6c31ab874ff87132e3b1a3f9c07a599999  BodycamDiagnostics-AutoTune.zip
+7b0099bc632cc031c2212d77d90312aeb4eaaa54f65c8d399e0ec46935158a57  BodycamDiagnostics-AutoTune.exe
