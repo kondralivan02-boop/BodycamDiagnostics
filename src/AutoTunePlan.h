@@ -17,7 +17,11 @@ struct Plan { bool supported = false; std::string reason, updated; std::vector<C
 inline bool suggest(const Hardware& h, Preset& p) noexcept {
     if (!h.vramMiB || !h.ramMiB || !h.width || !h.height) return false;
     const auto pixels = std::uint64_t(h.width) * h.height;
-    if (h.vramMiB < 8192 || h.ramMiB < 16384 ||
+    // DXGI may expose slightly less than the physical 8-GiB VRAM capacity
+    // (7943 MiB observed on Windows). Limit the allowance to 256 MiB, not
+    // broad rounding of small GPUs into a higher performance class.
+    constexpr std::uint64_t kEightGiBClassFloorMiB = 8192 - 256;
+    if (h.vramMiB < kEightGiBClassFloorMiB || h.ramMiB < 16384 ||
         (pixels > 2560ULL * 1440 && h.vramMiB < 12288)) p = Preset::Performance;
     else if (h.vramMiB < 12288 || pixels > 2560ULL * 1440) p = Preset::Balanced;
     else p = Preset::Quality;
