@@ -9,6 +9,8 @@ class ImportTests(unittest.TestCase):
     def test_compiler_runtime_is_not_a_system_dependency(self):
         for name in ['libc++.dll','libunwind.dll','libwinpthread-1.dll','VCRUNTIME140.dll','unknown.dll']:
             with self.assertRaises(ValueError): self.m.check_imports([name])
+    def test_windows_dxgi_system_dependency_is_allowed(self):
+        self.m.check_imports(['dxgi.dll', 'DXGI.DLL'])
     def test_windows_system_runtime_is_allowed(self):
         self.m.check_imports(['KERNEL32.dll','bcrypt.dll','api-ms-win-crt-runtime-l1-1-0.dll'])
 

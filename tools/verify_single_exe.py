@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import pefile
 
-SYSTEM_DLLS = set('advapi32 avrt avicap32 bcrypt comctl32 crypt32 dwmapi gdi32 iphlpapi kernel32 msimg32 ncrypt ole32 oleaut32 shell32 shlwapi tdh user32 uxtheme wevtapi winmm ws2_32'.split())
+SYSTEM_DLLS = set('advapi32 avrt avicap32 bcrypt comctl32 crypt32 dwmapi dxgi gdi32 iphlpapi kernel32 msimg32 ncrypt ole32 oleaut32 shell32 shlwapi tdh user32 uxtheme wevtapi winmm ws2_32'.split())
 
 
 def check_imports(names):
