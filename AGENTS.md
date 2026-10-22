@@ -52,3 +52,7 @@ Before reporting project state, ask:
 5. Am I following the latest user framing instead of the evidence?
 
 If answers 1–2 are empty, the state is **UNVERIFIED**.
+
+## Shared agent execution protocol v2
+
+For AI-assisted engineering tasks, read [AI_ENGINEERING_EXECUTION_PROTOCOL_V2.md](AI_ENGINEERING_EXECUTION_PROTOCOL_V2.md) alongside this repository's existing rules. Project-specific safety and architecture restrictions remain in force. This protocol is staged on this branch and does not supersede stricter existing safeguards.
