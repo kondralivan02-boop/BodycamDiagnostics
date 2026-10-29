@@ -1,0 +1,91 @@
+Bodycam Diagnostics
+PROPRIETARY COPYRIGHT NOTICE — ALL RIGHTS RESERVED
+УВЕДОМЛЕНИЕ ОБ АВТОРСКИХ ПРАВАХ — ВСЕ ПРАВА ЗАЩИЩЕНЫ
+
+Notice published: 2026-10-29
+Project maintainer: https://github.com/kondralivan02-boop
+Copyright (c) 2026 kondralivan02-boop, to the extent of original materials
+owned by the maintainer. Other rightful copyright holders retain their rights.
+All rights reserved.
+
+ENGLISH
+
+1. NO PUBLIC LICENSE GRANTED.
+This repository is publicly readable but is NOT open-source software.
+No general license is granted to use, execute, reproduce, redistribute, modify,
+adapt, compile into products, create derivative works from, sublicense, sell,
+rent, rebrand, republish, mirror, or otherwise commercially exploit the original
+Bodycam Diagnostics project source code, original assets, documentation, tests,
+builds, or other copyrightable original project materials without prior express
+written authorization from the applicable copyright holder.
+
+In particular, public availability does not authorize anyone to claim this
+project or substantial parts of its original code as their own development,
+remove or falsify attribution or copyright notices, or offer repackaged or
+modified versions as independent commercial products.
+
+2. EXISTING RIGHTS AND EXCEPTIONS.
+This notice does not override rights expressly granted by a valid pre-existing
+license or agreement, rights mandated by applicable law, or permissions provided
+by GitHub's Terms of Service for content hosted on GitHub (including permitted
+on-platform viewing and forking). A public repository is not an invitation to
+reuse the work beyond those permissions.
+
+3. THIRD-PARTY MATERIAL.
+This notice applies ONLY to original materials in which the maintainer or
+respective project contributors actually hold copyright. It does not claim
+ownership of Bodycam (the game), its trademarks, Unreal Engine, PresentMon,
+FFmpeg, LLVM-MinGW, or any other third-party code, binaries, assets, names,
+or technologies. Third-party materials remain subject to their own licenses,
+notices, and attribution/source-distribution obligations. Where provided,
+consult the separate licenses/ directory and third-party notices. No license
+granted by a third party is revoked or restricted by this document.
+
+4. PERMISSIONS.
+To request permission to reproduce, adapt, distribute or commercialize
+original Bodycam Diagnostics materials, contact the repository maintainer
+through the repository's GitHub channels and obtain express written permission
+from the relevant copyright holder(s).
+
+РУССКИЙ
+
+1. ПРАВА НА ИСПОЛЬЗОВАНИЕ НЕ ПРЕДОСТАВЛЕНЫ.
+Открытый доступ к репозиторию НЕ означает публикации проекта под свободной
+или открытой лицензией. Без предварительного прямого письменного разрешения
+соответствующего правообладателя не предоставляется разрешение использовать,
+запускать, воспроизводить, распространять, изменять, перерабатывать,
+компилировать в составе других продуктов, создавать производные произведения,
+сублицензировать, продавать, сдавать в аренду, переиздавать, переименовывать
+для выдачи за собственную разработку или иным образом коммерчески
+эксплуатировать оригинальный код и охраняемые авторским правом материалы
+проекта Bodycam Diagnostics.
+
+В частности, открытая публикация не разрешает присваивать авторство проекта
+или существенных частей его оригинального кода, удалять сведения об
+авторских правах либо продавать переупакованные или изменённые версии как
+самостоятельную собственную разработку.
+
+2. СОХРАНЕНИЕ ЗАКОННЫХ ПРАВ И ИСКЛЮЧЕНИЙ.
+Уведомление не отменяет действительные разрешения, выданные ранее по
+лицензии или соглашению, права, предусмотренные применимым законом, и
+права, предоставляемые условиями GitHub в рамках его сервиса, включая
+разрешённые просмотр и создание форков. Общедоступность кода сама по
+себе не предоставляет иных прав на его использование.
+
+3. СТОРОННИЕ КОМПОНЕНТЫ.
+Это уведомление относится только к оригинальным материалам, права на
+которые действительно принадлежат сопровождающему проекта или другим
+соответствующим авторам. Оно не устанавливает права на игру Bodycam,
+её обозначения, Unreal Engine, PresentMon, FFmpeg, LLVM-MinGW и другие
+сторонние разработки. Их собственные лицензии, уведомления и обязательства
+по предоставлению исходников продолжают действовать. Если присутствует
+каталог licenses/, см. также размещённые в нём тексты.
+
+4. РАЗРЕШЕНИЯ.
+Для использования, изменения, распространения или коммерческого применения
+оригинальных материалов Bodycam Diagnostics необходимо получить прямое
+письменное разрешение соответствующего правообладателя через сопровождающего
+репозитория в GitHub.
+
+This is a statement reserving rights, not a grant of permission or proof of
+exclusive authorship of any third-party material.

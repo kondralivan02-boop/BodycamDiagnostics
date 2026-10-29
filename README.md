@@ -1,5 +1,18 @@
 # Bodycam Diagnostics
 
+> **ПРАВА НА ИСХОДНЫЙ КОД / PROPRIETARY — ALL RIGHTS RESERVED.**
+> Оригинальные исходники и материалы Bodycam Diagnostics не распространяются
+> под открытой лицензией. Публикация на GitHub не разрешает присваивать код,
+> выдавать проект за собственную разработку, перерабатывать, распространять
+> или продавать его без прямого письменного разрешения правообладателя.
+> Исключения, предусмотренные законом, условиями GitHub и действительными
+> лицензиями сторонних компонентов, сохраняются. Подробности: [LICENSE](LICENSE).
+>
+> **EN:** Original project materials are proprietary; public visibility does
+> not grant permission to reuse, rebrand, redistribute or monetize them.
+> See [LICENSE](LICENSE). Third-party materials retain their own licenses.
+
+
 Русская инструкция для пользователя находится в `СПРАВКА.txt` & открывается кнопкой «Справка» в программе. Тест запускается F9, запись видео во время теста переключается F8. Видео по умолчанию выключено. Флажок «Режим совместимости с Gizmo» отключает сбор событий Windows, логов игры и полноэкранный помощник; включайте его до начала теста.
 
 Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagnostics.
