@@ -158,6 +158,8 @@ bool SessionMirror::syncOnce(bool finalPass) {
         L"validation.txt",
         L"performance_health.json",
         L"performance_health.txt",
+        L"autotune_feedback.json",
+        L"autotune_feedback.txt",
         L"stutter_events.json",
         L"stutter_events.txt",
         L"session_diagnostics.json",
