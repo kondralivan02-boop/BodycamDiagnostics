@@ -666,7 +666,9 @@ void stopSession() {
     if (gTelemetry) {
         const auto observed = gTelemetry->latest();
         gEnvironmentCapabilities.sources.push_back({"telemetry_last_sample", observed.valid ? "observed" : "unavailable", 0, true, "Last sampler snapshot; no guarantee of continuous coverage"});
-        gEnvironmentCapabilities.sources.push_back({"gpu_last_sample", observed.gpuValid ? "observed" : "unavailable", 0, true, "GPU snapshot availability; individual counters may still be absent"});
+        gEnvironmentCapabilities.sources.push_back({"gpu_last_sample", observed.gpuValid ? "observed" : "unavailable", 0, true, "NVIDIA NVML board telemetry; optional and not available on non-NVIDIA GPUs"});
+        gEnvironmentCapabilities.sources.push_back({"process_gpu_3d_telemetry", observed.processGpu3dValid ? "observed" : "unavailable", 0, true, "Per-process maximum 3D engine utilization via Windows PDH; optional WDDM counter"});
+        gEnvironmentCapabilities.sources.push_back({"process_max_thread_cpu_telemetry", observed.processMaxThreadCpuValid ? "observed" : "unavailable", 0, true, "Maximum observed CPU utilization of one process thread; optional"});
         gTelemetry->stop();
         logEvent(L"Телеметрия  •  OFF");
         gTelemetry.reset();

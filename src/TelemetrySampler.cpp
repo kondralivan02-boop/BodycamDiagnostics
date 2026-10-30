@@ -7,6 +7,7 @@
 #include <PdhMsg.h>
 
 #include <chrono>
+#include <cwchar>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -496,7 +497,8 @@ void TelemetrySampler::worker() {
     NvmlReader nvml;
     const bool nvmlReady = nvml.open();
     GpuEngineReader gpuEngine;
-    const bool gpuEngineReady = gpuEngine.open(targetPid_);
+    bool gpuEngineReady = gpuEngine.open(targetPid_);
+    auto nextGpuEngineRetry = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     ProcessThreadCpuReader threadCpu;
 
     while (running_.load()) {
@@ -649,6 +651,10 @@ void TelemetrySampler::worker() {
                 memMHz,
                 gpuPowerW,
                 gpuPowerLimitW);
+        if (!gpuEngineReady && std::chrono::steady_clock::now() >= nextGpuEngineRetry) {
+            gpuEngineReady = gpuEngine.open(targetPid_);
+            nextGpuEngineRetry = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        }
         double processGpu3dMaxPct = 0.0;
         const bool processGpu3dOk =
             gpuEngineReady && gpuEngine.sample(processGpu3dMaxPct);
