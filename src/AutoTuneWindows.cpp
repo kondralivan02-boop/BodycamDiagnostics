@@ -179,7 +179,7 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
             return;
         }
         std::string original;
-        if (!readSmall(backup, original)) {
+        if (!readSmall(backup, original) || !autotune::validOriginalBackup(original)) {
             message(owner, L"Исходная резервная копия повреждена или недоступна.");
             return;
         }
@@ -242,7 +242,8 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
         createdBackup = true;
     }
     std::string original;
-    if (!noReparse(backup) || !readSmall(backup, original) || original.empty() ||
+    if (!noReparse(backup) || !readSmall(backup, original) ||
+        !autotune::validOriginalBackup(original) ||
         (createdBackup && original != old)) {
         // Remove only a backup created by this failed attempt, never earlier evidence.
         if (createdBackup) DeleteFileW(backup.c_str());

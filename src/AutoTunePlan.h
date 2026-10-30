@@ -142,4 +142,10 @@ inline Plan prepare(std::string_view ini, Preset preset) {
     out.supported = true;
     return out;
 }
+// A restore must never feed an empty, truncated or unsupported saved file to
+// the Windows replacement path. Existing original backups were only created
+// after prepare() accepted at least four known scalability settings.
+inline bool validOriginalBackup(std::string_view ini) {
+    return prepare(ini, Preset::Balanced).supported;
+}
 } // namespace autotune
