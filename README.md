@@ -29,6 +29,7 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - Per-process GPU 3D-engine utilization via Windows PDH GPU Engine counters (vendor-neutral when the WDDM driver exposes them); NVIDIA NVML additionally supplies board utilization, VRAM, temperature, clocks and power.
 - GPU Engine values are the maximum utilization among this process's 3D engine instances, not a sum and not a whole-GPU utilization figure. Missing counters remain blank rather than being reported as zero.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
+- F9 AutoTune feedback correlates repeated >=100 ms stutters with per-process GPU 3D-engine and maximum single-thread CPU load. It can identify a Performance-profile candidate or CPU/mixed pressure; it never changes game settings automatically.
 - `summary.json` and `summary.txt` written at the end of each test.
 - Automatic native C++ `report_bundle.zip` containing logs, CSV telemetry/frametimes, system snapshot and summaries; no `tar.exe` or external archiver is required. Video stays outside the ZIP. `video_capture.log` is preserved after mux and included in the report.
 - UI buttons to open the latest session folder and copy the report ZIP path.

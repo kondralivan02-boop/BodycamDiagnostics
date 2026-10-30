@@ -69,6 +69,7 @@ A usable run should contain, when the corresponding source was available:
 - `validation.json` and `validation.txt`
 - `performance_health.json` and `performance_health.txt`
 - `stutter_events.json` and `stutter_events.txt`
+- `autotune_feedback.json` and `autotune_feedback.txt` (when correlation is available)
 - `session_diagnostics.json` and `session_diagnostics.txt`
 - `windows_events.json`
 - `video_capture.log`
@@ -90,7 +91,9 @@ Before performance comparisons are trusted:
 - `video_capture.log` must survive successful muxing and be present in the report bundle
 - a configured persistent mirror must remain writable throughout the test
 - any unexpected Bodycam exit must leave recoverable diagnostics in the session/mirror
-- diagnostic indicators are correlations only; they are not proof of root cause
+- diagnostic indicators and AutoTune feedback are correlations only; they are not proof of root cause
+- unsupported per-process GPU or CPU-thread counters remain blank, not zero
+- AutoTune feedback never changes game settings automatically
 
 ## 6. Comparison rule
 

@@ -38,6 +38,7 @@ add_executable(BodycamDiagnostics WIN32
     src/RecordingTimeline.cpp
     src/ToolPreflight.cpp
     src/TelemetrySampler.cpp
+    src/AutoTuneFeedback.cpp
     src/MetricsCalculator.cpp
     src/FrameContinuity.cpp
     src/ReportPackager.cpp
@@ -133,6 +134,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(AutoTuneFeedbackTests tests/AutoTuneFeedbackTests.cpp src/AutoTuneFeedback.cpp)
+    target_include_directories(AutoTuneFeedbackTests PRIVATE src)
+    add_test(NAME AutoTuneFeedbackTests COMMAND AutoTuneFeedbackTests)
+    if(MSVC)
+        target_compile_options(AutoTuneFeedbackTests PRIVATE /utf-8 /W4 /WX)
+    endif()
     add_executable(GpuEnginePolicyTests tests/GpuEnginePolicyTests.cpp)
     target_include_directories(GpuEnginePolicyTests PRIVATE src)
     add_test(NAME GpuEnginePolicyTests COMMAND GpuEnginePolicyTests)

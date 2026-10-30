@@ -44,6 +44,7 @@
 #include "SessionMirror.h"
 #include "SystemSnapshot.h"
 #include "StutterCorrelator.h"
+#include "AutoTuneFeedback.h"
 #include "TelemetrySampler.h"
 #include "TestValidator.h"
 #include "ToolPreflight.h"
@@ -787,6 +788,18 @@ void stopSession() {
             L" event(s) >=100 ms");
     } else {
         logEvent(L"Ошибка stutter correlation  •  " + stutterReportError);
+    }
+
+    const auto autoTuneFeedback = analyzeAutoTuneFeedback(stutterCorrelation);
+    std::wstring autoTuneFeedbackError;
+    if (writeAutoTuneFeedbackReport(
+            autoTuneFeedback,
+            sessionPath / L"autotune_feedback.json",
+            sessionPath / L"autotune_feedback.txt",
+            &autoTuneFeedbackError)) {
+        logEvent(L"F9 AutoTune feedback  •  report saved");
+    } else {
+        logEvent(L"Ошибка F9 AutoTune feedback  •  " + autoTuneFeedbackError);
     }
 
     const auto performanceHealth = analyzePerformanceHealth(summary);
