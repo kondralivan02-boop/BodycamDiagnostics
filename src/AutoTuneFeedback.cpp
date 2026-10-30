@@ -96,8 +96,10 @@ bool writeAutoTuneFeedbackReport(const AutoTuneFeedback& f,
     auto& j = jf.stream();
     j << "{\n"
       << "  \"source_valid\": " << (f.sourceValid ? "true" : "false") << ",\n"
+      << "  \"schema_version\": 1,\n"
       << "  \"analysis_scope\": \"PresentMon and telemetry correlations for stutters >=100 ms\",\n"
       << "  \"automatic_settings_changed\": false,\n"
+      << "  \"confidence_semantics\": \"coverage and repetition tier, not statistical probability\",\n"
       << "  \"stutter_events\": " << f.stutterEvents << ",\n"
       << "  \"telemetry_matched_events\": " << f.telemetryMatchedEvents << ",\n"
       << "  \"gpu_3d_metric_coverage_events\": " << f.gpuMetricCoverageEvents << ",\n"
@@ -125,6 +127,7 @@ bool writeAutoTuneFeedbackReport(const AutoTuneFeedback& f,
       << "Recommendation: " << autoTuneFeedbackKindName(f.kind) << "\n"
       << "Evidence confidence: " << autoTuneFeedbackConfidenceName(f.confidence) << "\n\n"
       << f.explanation << "\n\n"
+      << "Evidence confidence is a coverage/repetition tier, not a statistical probability.\n"
       << "Correlation evidence is not proof of root cause or a guaranteed FPS prediction.\n";
     return t && tf.commit(error);
 }
