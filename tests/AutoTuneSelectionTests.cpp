@@ -75,5 +75,52 @@ int main() {
         "sg.TextureQuality=3\nsg.PostProcessQuality=3\nsg.EffectsQuality=3\n";
     CHECK(validOriginalBackup(original));
     CHECK(!validOriginalBackup(""));
+
+    const auto confirmedResolution = resolveGameResolution(
+        "[/Script/Engine.GameUserSettings]\n"
+        "ResolutionSizeX=1280\nResolutionSizeY=720\n"
+        "LastUserConfirmedResolutionSizeX=2560\n"
+        "LastUserConfirmedResolutionSizeY=1440\n", 1920, 1080);
+    CHECK(confirmedResolution.fromGameIni);
+    CHECK(confirmedResolution.width == 2560 && confirmedResolution.height == 1440);
+    CHECK(confirmedResolution.source == Hardware::ResolutionSource::GameIniLastConfirmed);
+
+    const auto currentResolution = resolveGameResolution(
+        "[/Script/Engine.GameUserSettings]\nResolutionSizeX=1920\nResolutionSizeY=1080\n",
+        2560, 1440);
+    CHECK(currentResolution.fromGameIni);
+    CHECK(currentResolution.width == 1920 && currentResolution.height == 1080);
+    CHECK(currentResolution.source == Hardware::ResolutionSource::GameIniCurrent);
+
+    const auto partialResolution = resolveGameResolution(
+        "ResolutionSizeX=1920\n", 2560, 1440);
+    CHECK(!partialResolution.fromGameIni);
+    CHECK(partialResolution.width == 2560 && partialResolution.height == 1440);
+
+    const auto duplicateResolution = resolveGameResolution(
+        "ResolutionSizeX=1920\nResolutionSizeX=2560\nResolutionSizeY=1080\n",
+        2560, 1440);
+    CHECK(!duplicateResolution.fromGameIni);
+    CHECK(duplicateResolution.width == 2560 && duplicateResolution.height == 1440);
+
+    const auto malformedResolution = resolveGameResolution(
+        "ResolutionSizeX=0\nResolutionSizeY=1080\n", 2560, 1440);
+    CHECK(!malformedResolution.fromGameIni);
+
+    Hardware confidence = hardware(8192, 32768, 2560, 1440, 16);
+    confidence.gpuAdapterCount = 1;
+    confidence.gpuName = "GPU model";
+    confidence.cpuName = "CPU model";
+    confidence.physicalCores = 8;
+    confidence.resolutionSource = Hardware::ResolutionSource::GameIniLastConfirmed;
+    CHECK(baselineConfidence(confidence) == BaselineConfidence::High);
+    confidence.gpuSelectedByHighPerformancePreference = true;
+    CHECK(baselineConfidence(confidence) == BaselineConfidence::Medium);
+    confidence.gpuSelectedByHighPerformancePreference = false;
+    confidence.sharedOnlyGpu = true;
+    CHECK(baselineConfidence(confidence) == BaselineConfidence::Low);
+    CHECK(std::string(gpuVendorName(0x10DE)) == "NVIDIA");
+    CHECK(std::string(gpuVendorName(0x1002)) == "AMD");
+    CHECK(std::string(gpuVendorName(0x8086)) == "Intel");
     std::cout << "AutoTuneSelectionTests PASS\n";
 }

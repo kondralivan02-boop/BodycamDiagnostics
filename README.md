@@ -119,9 +119,16 @@ order is selected. If multiple adapters exist but that ordering is unavailable,
 AutoTune refuses to guess. A per-game Windows GPU preference can still override
 the DXGI ordering, so the preview warns when more than one adapter is present.
 Integrated/shared-only adapters receive a conservative Performance baseline.
+The preview also identifies the CPU model, physical/logical core counts and GPU
+vendor/model. For resolution, it prefers a unique, valid
+LastUserConfirmedResolutionSizeX/Y pair in GameUserSettings.ini, then a unique
+ResolutionSizeX/Y pair; otherwise it falls back to the desktop mode. The
+configured output resolution is not treated as proof of internal render
+resolution or dynamic-resolution behavior. A High/Medium/Low label describes
+the completeness of baseline inputs only; it is not a calibrated FPS prediction.
 This remains a capacity-based starting heuristic, **not a measured optimum**:
-VRAM does not measure GPU compute performance or CPU bottlenecks. Compare F9
-captures under equivalent conditions before judging.
+VRAM and model names alone do not measure GPU compute throughput or CPU
+bottlenecks. Compare F9 captures under equivalent conditions before judging.
 
 The prototype looks for one and only one accessible `GameUserSettings.ini` under
 `%LOCALAPPDATA%\\Bodycam\\Saved\\Config\\Window`, `Windows` or `WindowsNoEditor`.

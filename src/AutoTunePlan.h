@@ -24,6 +24,10 @@ struct Hardware {
     bool sharedOnlyGpu = false;
     bool gpuSelectedByHighPerformancePreference = false;
     std::string gpuName;
+    std::string cpuName;
+    unsigned physicalCores = 0;
+    enum class ResolutionSource { GameIniLastConfirmed, GameIniCurrent, DesktopFallback };
+    ResolutionSource resolutionSource = ResolutionSource::DesktopFallback;
     Hardware() = default;
     Hardware(std::uint64_t dedicated, std::uint64_t systemRam,
              unsigned displayWidth, unsigned displayHeight) noexcept
@@ -91,6 +95,128 @@ inline std::string_view trim(std::string_view s) noexcept {
     while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) s.remove_suffix(1);
     return s;
 }
+
+struct GameResolution {
+    unsigned width = 0;
+    unsigned height = 0;
+    Hardware::ResolutionSource source = Hardware::ResolutionSource::DesktopFallback;
+    bool fromGameIni = false;
+};
+
+inline bool parseResolutionDimension(std::string_view text, unsigned& value) noexcept {
+    text = trim(text);
+    if (text.empty() || text.size() > 5) return false;
+    unsigned parsed = 0;
+    for (const char c : text) {
+        if (c < '0' || c > '9') return false;
+        parsed = parsed * 10U + static_cast<unsigned>(c - '0');
+    }
+    if (parsed == 0 || parsed > 16384) return false;
+    value = parsed;
+    return true;
+}
+
+// Reads only persisted game-resolution pairs. Duplicate, partial or malformed
+// values are not guessed; the caller's desktop dimensions remain the fallback.
+// This is configured output resolution, not a claim about internal render scale.
+inline GameResolution resolveGameResolution(std::string_view ini,
+                                             unsigned desktopWidth,
+                                             unsigned desktopHeight) {
+    struct Value {
+        unsigned count = 0;
+        unsigned parsed = 0;
+        bool valid = true;
+    };
+    Value lastX, lastY, currentX, currentY;
+    for (std::size_t pos = 0; pos < ini.size();) {
+        const auto end = ini.find('\n', pos);
+        const auto limit = end == std::string_view::npos ? ini.size() : end;
+        auto line = trim(ini.substr(pos, limit - pos));
+        if (pos == 0 && line.starts_with("\xef\xbb\xbf")) line.remove_prefix(3);
+        if (!line.empty() && line.front() != ';' && line.front() != '#') {
+            const auto eq = line.find('=');
+            if (eq != std::string_view::npos) {
+                const auto key = lower(trim(line.substr(0, eq)));
+                Value* target = nullptr;
+                if (key == "lastuserconfirmedresolutionsizex") target = &lastX;
+                else if (key == "lastuserconfirmedresolutionsizey") target = &lastY;
+                else if (key == "resolutionsizex") target = &currentX;
+                else if (key == "resolutionsizey") target = &currentY;
+                if (target) {
+                    ++target->count;
+                    unsigned parsed = 0;
+                    if (target->count != 1 || !parseResolutionDimension(line.substr(eq + 1), parsed)) {
+                        target->valid = false;
+                    } else {
+                        target->parsed = parsed;
+                    }
+                }
+            }
+        }
+        if (end == std::string_view::npos) break;
+        pos = end + 1;
+    }
+    const auto complete = [](const Value& x, const Value& y) {
+        return x.count == 1 && y.count == 1 && x.valid && y.valid;
+    };
+    const bool confirmedPresent = lastX.count != 0 || lastY.count != 0;
+    const bool currentPresent = currentX.count != 0 || currentY.count != 0;
+    if (confirmedPresent && complete(lastX, lastY)) {
+        return {lastX.parsed, lastY.parsed,
+                Hardware::ResolutionSource::GameIniLastConfirmed, true};
+    }
+    if (!confirmedPresent && currentPresent && complete(currentX, currentY)) {
+        return {currentX.parsed, currentY.parsed,
+                Hardware::ResolutionSource::GameIniCurrent, true};
+    }
+    return {desktopWidth, desktopHeight,
+            Hardware::ResolutionSource::DesktopFallback, false};
+}
+
+inline const char* resolutionSourceName(Hardware::ResolutionSource source) noexcept {
+    switch (source) {
+    case Hardware::ResolutionSource::GameIniLastConfirmed: return "Game INI (last confirmed)";
+    case Hardware::ResolutionSource::GameIniCurrent: return "Game INI (current)";
+    case Hardware::ResolutionSource::DesktopFallback: return "Desktop fallback";
+    }
+    return "Unknown";
+}
+
+inline const char* gpuVendorName(std::uint32_t vendorId) noexcept {
+    switch (vendorId) {
+    case 0x10DE: return "NVIDIA";
+    case 0x1002: return "AMD";
+    case 0x8086: return "Intel";
+    default: return "Other/unknown";
+    }
+}
+
+enum class BaselineConfidence { Low, Medium, High };
+
+// Confidence describes input completeness for the baseline only. It is not
+// a calibrated FPS prediction or a benchmark score.
+inline BaselineConfidence baselineConfidence(const Hardware& h) noexcept {
+    if (!h.ramMiB || !h.width || !h.height || h.gpuSelectionAmbiguous ||
+        (!h.vramMiB && !h.sharedGpuMemoryMiB) || h.sharedOnlyGpu) {
+        return BaselineConfidence::Low;
+    }
+    if (h.resolutionSource == Hardware::ResolutionSource::DesktopFallback ||
+        h.gpuSelectedByHighPerformancePreference || h.gpuName.empty() ||
+        h.cpuName.empty() || !h.physicalCores || !h.logicalProcessors) {
+        return BaselineConfidence::Medium;
+    }
+    return BaselineConfidence::High;
+}
+
+inline const char* confidenceName(BaselineConfidence confidence) noexcept {
+    switch (confidence) {
+    case BaselineConfidence::Low: return "Low";
+    case BaselineConfidence::Medium: return "Medium";
+    case BaselineConfidence::High: return "High";
+    }
+    return "Unknown";
+}
+
 struct Setting { const char* key; std::array<int, 3> values; };
 inline constexpr std::array<Setting, 10> kKnownSettings{{
     {"sg.viewdistancequality", {2, 2, 3}},

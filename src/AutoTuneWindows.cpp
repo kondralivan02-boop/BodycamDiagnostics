@@ -39,6 +39,40 @@ std::string utf8(const wchar_t* value) {
     return result;
 }
 
+std::wstring cpuModel() {
+    DWORD type = 0;
+    DWORD bytes = 0;
+    constexpr auto key = L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"ProcessorNameString",
+                     RRF_RT_REG_SZ, &type, nullptr, &bytes) != ERROR_SUCCESS ||
+        bytes < sizeof(wchar_t) || bytes > 4096) return {};
+    std::vector<wchar_t> buffer(bytes / sizeof(wchar_t));
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, key, L"ProcessorNameString",
+                     RRF_RT_REG_SZ, &type, buffer.data(), &bytes) != ERROR_SUCCESS) return {};
+    return buffer.data();
+}
+
+unsigned physicalCoreCount() {
+    DWORD bytes = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bytes);
+    if (!bytes || bytes > 1024 * 1024) return 0;
+    std::vector<unsigned char> buffer(bytes);
+    if (!GetLogicalProcessorInformationEx(
+            RelationProcessorCore,
+            reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
+            &bytes)) return 0;
+    unsigned cores = 0;
+    DWORD offset = 0;
+    while (offset + sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) <= bytes) {
+        const auto* info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(
+            buffer.data() + offset);
+        if (!info->Size || info->Size > bytes - offset) return 0;
+        if (info->Relationship == RelationProcessorCore) ++cores;
+        offset += info->Size;
+    }
+    return offset == bytes ? cores : 0;
+}
+
 // Checks each existing component, including the final file, to refuse
 // symlinks/junctions instead of following redirected game/storage folders.
 bool noReparse(const std::filesystem::path& path) {
@@ -79,7 +113,7 @@ std::filesystem::path configFile() {
     return found;
 }
 
-autotune::Hardware detectHardware() {
+autotune::Hardware detectHardware(std::string_view gameIni) {
     autotune::Hardware h;
     MEMORYSTATUSEX mem{};
     mem.dwLength = sizeof(mem);
@@ -87,6 +121,13 @@ autotune::Hardware detectHardware() {
     h.width = static_cast<unsigned>((std::max)(0, GetSystemMetrics(SM_CXSCREEN)));
     h.height = static_cast<unsigned>((std::max)(0, GetSystemMetrics(SM_CYSCREEN)));
     h.logicalProcessors = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    h.physicalCores = physicalCoreCount();
+    const auto cpu = cpuModel();
+    h.cpuName = utf8(cpu.c_str());
+    const auto resolution = autotune::resolveGameResolution(gameIni, h.width, h.height);
+    h.width = resolution.width;
+    h.height = resolution.height;
+    h.resolutionSource = resolution.source;
 
     std::vector<autotune::GpuAdapterMemory> adapters;
     std::vector<std::wstring> adapterNames;
@@ -252,7 +293,7 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
         else message(owner, L"Первоначальный GameUserSettings.ini восстановлен.", MB_ICONINFORMATION);
         return;
     }
-    const auto hardware = detectHardware();
+    const auto hardware = detectHardware(old);
     autotune::Preset preset{};
     if (!autotune::suggest(hardware, preset)) {
         if (hardware.gpuSelectionAmbiguous) {
@@ -277,8 +318,17 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
         L"\nDedicated VRAM: " + std::to_wstring(hardware.vramMiB) + L" MiB" +
         L"\nShared memory capacity: " + std::to_wstring(hardware.sharedGpuMemoryMiB) + L" MiB" +
         L"\nRAM: " + std::to_wstring(hardware.ramMiB) + L" MiB" +
-        L"\nCPU logical processors: " + std::to_wstring(hardware.logicalProcessors) +
-        L"\nHardware adapters: " + std::to_wstring(hardware.gpuAdapterCount) + L"\n\n";
+        L"\nCPU: " + (hardware.cpuName.empty() ? L"Unknown" : widen(hardware.cpuName)) +
+        L"\nCPU cores / logical processors: " + std::to_wstring(hardware.physicalCores) +
+        L" / " + std::to_wstring(hardware.logicalProcessors) +
+        L"\nGame resolution: " + std::to_wstring(hardware.width) + L"x" +
+        std::to_wstring(hardware.height) + L" (" +
+        widen(autotune::resolutionSourceName(hardware.resolutionSource)) + L")" +
+        L"\nGPU vendor: " + widen(autotune::gpuVendorName(hardware.gpuVendorId)) +
+        L"\nHardware adapters: " + std::to_wstring(hardware.gpuAdapterCount) +
+        L"\nBaseline input confidence: " +
+        widen(autotune::confidenceName(autotune::baselineConfidence(hardware))) +
+        L"\n\n";
     if (hardware.sharedOnlyGpu) {
         preview += L"GPU использует shared/UMA memory; она не приравнивается к dedicated VRAM. Выбран консервативный Performance.\n";
     }
@@ -290,7 +340,9 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
         preview += widen(change.key) + L": " + std::to_wstring(change.before) +
             L" -> " + std::to_wstring(change.after) + L"\n";
     }
-    preview += L"\nЭто не результат бенчмарка! DLSS и Frame Generation не изменяются. "
+    preview += L"\nУверенность относится только к полноте исходных данных, а не к прогнозу FPS. "
+        L"Внутреннее render resolution / dynamic resolution не подтверждены. "
+        L"Это не результат бенчмарка! DLSS и Frame Generation не изменяются. "
         L"Будет создана резервная копия. Применить настройки?";
     if (MessageBoxW(owner, preview.c_str(), L"Bodycam AutoTune — просмотр изменений",
                     MB_YESNO | MB_ICONQUESTION) != IDYES) return;
