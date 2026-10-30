@@ -15,19 +15,21 @@ int main() {
     using namespace autotune;
     Preset p = Preset::Quality;
     CHECK(!suggest({}, p));
-    CHECK(suggest({6144, 16384, 1920, 1080}, p) && p == Preset::Performance);
+    CHECK(suggest({6144, 16384, 1920, 1080}, p) && p == Preset::Balanced);
     CHECK(suggest({8192, 32768, 2560, 1440}, p) && p == Preset::Balanced);
     // Windows/DXGI reported 7943 MiB on an approximately 8-GiB GPU.
     // A narrow 256-MiB band avoids misclassifying the 8-GiB class at 1080p/1440p.
-    CHECK(suggest({7935, 32694, 1920, 1080}, p) && p == Preset::Performance);
+    CHECK(suggest({7935, 32694, 1920, 1080}, p) && p == Preset::Balanced);
     CHECK(suggest({7936, 32694, 1920, 1080}, p) && p == Preset::Balanced);
     CHECK(suggest({7943, 32694, 1920, 1080}, p) && p == Preset::Balanced);
     CHECK(suggest({7943, 32694, 2560, 1440}, p) && p == Preset::Balanced);
     // The reservation tolerance does not override RAM or high-resolution guards.
     CHECK(suggest({7943, 8192, 1920, 1080}, p) && p == Preset::Performance);
     CHECK(suggest({7943, 32694, 3840, 2160}, p) && p == Preset::Performance);
-    CHECK(suggest({16384, 32768, 1920, 1080}, p) && p == Preset::Quality);
+    CHECK(suggest({16384, 32768, 1920, 1080}, p) && p == Preset::Balanced);
     CHECK(suggest({12288, 32768, 3840, 2160}, p) && p == Preset::Balanced);
+    Hardware quality{16384, 32768, 1920, 1080}; quality.logicalProcessors = 8;
+    CHECK(suggest(quality, p) && p == Preset::Quality);
     const std::string original = "; comment\r\n[Graphics]\r\nSpecial=keep\r\n"
         "[ScalabilityGroups]\r\nsg.ShadowQuality=3\r\nsg.TextureQuality=3\r\n"
         "sg.PostProcessQuality=2\r\nsg.EffectsQuality=3\r\nUnknown=keep\r\n"

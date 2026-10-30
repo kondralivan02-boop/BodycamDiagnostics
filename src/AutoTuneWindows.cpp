@@ -4,7 +4,7 @@
 #include "ProcessFinder.h"
 #include <Windows.h>
 #include <shlobj.h>
-#include <dxgi.h>
+#include <dxgi1_6.h>
 #include <exception>
 #include <algorithm>
 #include <filesystem>
@@ -25,6 +25,17 @@ std::wstring widen(std::string_view s) {
     if (n <= 0) return L"Unknown";
     std::wstring result(static_cast<std::size_t>(n), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), result.data(), n);
+    return result;
+}
+
+std::string utf8(const wchar_t* value) {
+    if (!value || !*value) return {};
+    const int required = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+    if (required <= 1) return {};
+    std::string result(static_cast<std::size_t>(required), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), required, nullptr, nullptr) != required)
+        return {};
+    result.pop_back();
     return result;
 }
 
@@ -75,21 +86,68 @@ autotune::Hardware detectHardware() {
     if (GlobalMemoryStatusEx(&mem)) h.ramMiB = mem.ullTotalPhys / (1024 * 1024);
     h.width = static_cast<unsigned>((std::max)(0, GetSystemMetrics(SM_CXSCREEN)));
     h.height = static_cast<unsigned>((std::max)(0, GetSystemMetrics(SM_CYSCREEN)));
-    IDXGIFactory1* factory = nullptr;
-    if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory)))) {
+    h.logicalProcessors = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+
+    std::vector<autotune::GpuAdapterMemory> adapters;
+    std::vector<std::wstring> adapterNames;
+    bool highPerformanceOrderKnown = false;
+    IDXGIFactory6* factory6 = nullptr;
+    if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory6),
+                                    reinterpret_cast<void**>(&factory6)))) {
+        highPerformanceOrderKnown = true;
         for (UINT i = 0;; ++i) {
             IDXGIAdapter1* adapter = nullptr;
-            const HRESULT hr = factory->EnumAdapters1(i, &adapter);
+            const HRESULT hr = factory6->EnumAdapterByGpuPreference(
+                i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                __uuidof(IDXGIAdapter1), reinterpret_cast<void**>(&adapter));
             if (FAILED(hr)) break;
             DXGI_ADAPTER_DESC1 desc{};
-            if (SUCCEEDED(adapter->GetDesc1(&desc)) &&
-                !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
-                h.vramMiB = (std::max)(h.vramMiB,
-                    static_cast<std::uint64_t>(desc.DedicatedVideoMemory / (1024 * 1024)));
+            if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+                adapters.push_back(autotune::GpuAdapterMemory{
+                    static_cast<std::uint64_t>(desc.DedicatedVideoMemory / (1024 * 1024)),
+                    static_cast<std::uint64_t>(desc.SharedSystemMemory / (1024 * 1024)),
+                    desc.VendorId, desc.DeviceId,
+                    (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0
+                });
+                adapterNames.emplace_back(desc.Description);
             }
             adapter->Release();
         }
-        factory->Release();
+        factory6->Release();
+    } else {
+        IDXGIFactory1* factory1 = nullptr;
+        if (SUCCEEDED(CreateDXGIFactory1(__uuidof(IDXGIFactory1),
+                                        reinterpret_cast<void**>(&factory1)))) {
+            for (UINT i = 0;; ++i) {
+                IDXGIAdapter1* adapter = nullptr;
+                if (FAILED(factory1->EnumAdapters1(i, &adapter))) break;
+                DXGI_ADAPTER_DESC1 desc{};
+                if (SUCCEEDED(adapter->GetDesc1(&desc))) {
+                    adapters.push_back(autotune::GpuAdapterMemory{
+                        static_cast<std::uint64_t>(desc.DedicatedVideoMemory / (1024 * 1024)),
+                        static_cast<std::uint64_t>(desc.SharedSystemMemory / (1024 * 1024)),
+                        desc.VendorId, desc.DeviceId,
+                        (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0
+                    });
+                    adapterNames.emplace_back(desc.Description);
+                }
+                adapter->Release();
+            }
+            factory1->Release();
+        }
+    }
+    const auto selection = autotune::selectGpuMemory(adapters, highPerformanceOrderKnown);
+    h.gpuAdapterCount = static_cast<unsigned>(selection.adapterCount);
+    h.gpuSelectionAmbiguous = selection.ambiguous;
+    if (selection.supported && selection.selectedIndex < adapters.size() &&
+        selection.selectedIndex < adapterNames.size()) {
+        h.vramMiB = selection.dedicatedMiB;
+        h.sharedGpuMemoryMiB = selection.sharedMiB;
+        h.sharedOnlyGpu = selection.sharedOnly;
+        h.gpuVendorId = selection.vendorId;
+        h.gpuDeviceId = selection.deviceId;
+        h.gpuSelectedByHighPerformancePreference = selection.highPerformancePreferenceUsed;
+        h.gpuName = utf8(adapterNames[selection.selectedIndex].c_str());
     }
     return h;
 }
@@ -197,7 +255,11 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
     const auto hardware = detectHardware();
     autotune::Preset preset{};
     if (!autotune::suggest(hardware, preset)) {
-        message(owner, L"Не удалось безопасно определить VRAM, RAM или разрешение. Автопрофиль не выбран.");
+        if (hardware.gpuSelectionAmbiguous) {
+            message(owner, L"Обнаружено несколько графических адаптеров, но Windows не предоставила надёжный порядок выбора. Автоподбор заблокирован, чтобы не применить профиль к неверной видеокарте.");
+        } else {
+            message(owner, L"Не удалось безопасно определить видеопамять, shared memory, RAM или разрешение. Автопрофиль не выбран.");
+        }
         return;
     }
     const auto plan = autotune::prepare(old, preset);
@@ -211,8 +273,19 @@ void runGameAutoTune(HWND owner, const std::filesystem::path& dataRoot,
     }
     std::wstring preview =
         L"Начальный профиль (эвристика по железу): " + widen(autotune::name(preset)) +
-        L"\nVRAM: " + std::to_wstring(hardware.vramMiB) + L" MiB, RAM: " +
-        std::to_wstring(hardware.ramMiB) + L" MiB\n\n";
+        L"\nGPU: " + widen(hardware.gpuName) +
+        L"\nDedicated VRAM: " + std::to_wstring(hardware.vramMiB) + L" MiB" +
+        L"\nShared memory capacity: " + std::to_wstring(hardware.sharedGpuMemoryMiB) + L" MiB" +
+        L"\nRAM: " + std::to_wstring(hardware.ramMiB) + L" MiB" +
+        L"\nCPU logical processors: " + std::to_wstring(hardware.logicalProcessors) +
+        L"\nHardware adapters: " + std::to_wstring(hardware.gpuAdapterCount) + L"\n\n";
+    if (hardware.sharedOnlyGpu) {
+        preview += L"GPU использует shared/UMA memory; она не приравнивается к dedicated VRAM. Выбран консервативный Performance.\n";
+    }
+    if (hardware.gpuSelectedByHighPerformancePreference) {
+        preview += L"Обнаружено несколько GPU. Выбран первый адаптер по DXGI high-performance preference. Индивидуальная настройка Windows для Bodycam может переопределить выбор; проверьте, какой GPU использует игра.\n";
+    }
+    preview += L"\n";
     for (const auto& change : plan.changes) {
         preview += widen(change.key) + L": " + std::to_wstring(change.before) +
             L" -> " + std::to_wstring(change.after) + L"\n";

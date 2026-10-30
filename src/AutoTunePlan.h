@@ -1,4 +1,5 @@
 #pragma once
+#include "AutoTuneGpuPolicy.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -9,22 +10,68 @@
 
 namespace autotune {
 enum class Preset { Performance, Balanced, Quality };
-struct Hardware { std::uint64_t vramMiB = 0, ramMiB = 0; unsigned width = 0, height = 0; };
+struct Hardware {
+    std::uint64_t vramMiB = 0;
+    std::uint64_t ramMiB = 0;
+    unsigned width = 0;
+    unsigned height = 0;
+    std::uint64_t sharedGpuMemoryMiB = 0;
+    unsigned logicalProcessors = 0;
+    unsigned gpuAdapterCount = 0;
+    std::uint32_t gpuVendorId = 0;
+    std::uint32_t gpuDeviceId = 0;
+    bool gpuSelectionAmbiguous = false;
+    bool sharedOnlyGpu = false;
+    bool gpuSelectedByHighPerformancePreference = false;
+    std::string gpuName;
+    Hardware() = default;
+    Hardware(std::uint64_t dedicated, std::uint64_t systemRam,
+             unsigned displayWidth, unsigned displayHeight) noexcept
+        : vramMiB(dedicated), ramMiB(systemRam), width(displayWidth), height(displayHeight) {}
+};
 struct Change { std::string key; int before = 0, after = 0; };
 struct Plan { bool supported = false; std::string reason, updated; std::vector<Change> changes; };
 
 // An initial hardware heuristic, not a measured optimum. Unknown memory fails closed.
+// Conservative, vendor-neutral starting profile. VRAM is a capacity signal,
+// not a GPU performance benchmark; CPU/RAM/resolution only cap the baseline.
+// The selected adapter must be unambiguous before any INI change is proposed.
 inline bool suggest(const Hardware& h, Preset& p) noexcept {
-    if (!h.vramMiB || !h.ramMiB || !h.width || !h.height) return false;
-    const auto pixels = std::uint64_t(h.width) * h.height;
-    // DXGI may expose slightly less than the physical 8-GiB VRAM capacity
-    // (7943 MiB observed on Windows). Limit the allowance to 256 MiB, not
-    // broad rounding of small GPUs into a higher performance class.
-    constexpr std::uint64_t kEightGiBClassFloorMiB = 8192 - 256;
-    if (h.vramMiB < kEightGiBClassFloorMiB || h.ramMiB < 16384 ||
-        (pixels > 2560ULL * 1440 && h.vramMiB < 12288)) p = Preset::Performance;
-    else if (h.vramMiB < 12288 || pixels > 2560ULL * 1440) p = Preset::Balanced;
-    else p = Preset::Quality;
+    if (!h.ramMiB || !h.width || !h.height || h.gpuSelectionAmbiguous) return false;
+    if (!h.vramMiB) {
+        if (!h.sharedGpuMemoryMiB) return false;
+        p = Preset::Performance;
+        return true;
+    }
+    const auto vram = nominalVramMiB(h.vramMiB);
+    const auto pixels = std::uint64_t(h.width) * std::uint64_t(h.height);
+    constexpr std::uint64_t k1080p = 1920ULL * 1080ULL;
+    constexpr std::uint64_t k1440p = 2560ULL * 1440ULL;
+    constexpr std::uint64_t k4k = 3840ULL * 2160ULL;
+    if (h.ramMiB < 12ULL * 1024ULL ||
+        (h.logicalProcessors != 0 && h.logicalProcessors < 4)) {
+        p = Preset::Performance;
+        return true;
+    }
+    if (pixels > k4k) {
+        p = vram >= 24ULL * 1024ULL ? Preset::Balanced : Preset::Performance;
+    } else if (pixels > k1440p) {
+        p = vram >= 12ULL * 1024ULL ? Preset::Balanced : Preset::Performance;
+    } else if (pixels > k1080p) {
+        p = vram >= 8ULL * 1024ULL ? Preset::Balanced : Preset::Performance;
+    } else {
+        p = vram >= 6ULL * 1024ULL ? Preset::Balanced : Preset::Performance;
+    }
+    if (p == Preset::Balanced &&
+        (h.ramMiB < 16ULL * 1024ULL ||
+         (h.logicalProcessors != 0 && h.logicalProcessors < 6))) {
+        p = Preset::Performance;
+    }
+    if (p == Preset::Balanced && pixels <= k1080p &&
+        vram >= 16ULL * 1024ULL && h.ramMiB >= 32ULL * 1024ULL &&
+        h.logicalProcessors >= 8) {
+        p = Preset::Quality;
+    }
     return true;
 }
 inline const char* name(Preset p) noexcept {

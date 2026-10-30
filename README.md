@@ -109,8 +109,19 @@ An isolated, **opt-in** game-configuration prototype is available only if built 
 `-DBODYCAM_EXPERIMENTAL_AUTOTUNE=ON`. Production builds are unchanged. In that
 experimental build, open **НАСТРОЙКИ** to preview automatic Performance/Balanced/
 Quality scalability suggestions or restore the original file. The initial suggestion
-uses detected dedicated GPU memory (DXGI), RAM and display resolution; it is **not**
-a measured optimum. Compare F9 captures under equivalent conditions before judging.
+uses a vendor-neutral DXGI hardware-adapter inventory (NVIDIA, AMD, Intel and
+other DXGI adapters), dedicated and shared memory as separate values, total RAM,
+CPU logical-processor count and display resolution. Dedicated-memory values are
+normalized near whole-GiB capacity classes using the same bounded tolerance at
+every size; shared UMA memory is never counted as dedicated VRAM. On DXGI 1.6
+systems, the first hardware adapter in Windows' high-performance preference
+order is selected. If multiple adapters exist but that ordering is unavailable,
+AutoTune refuses to guess. A per-game Windows GPU preference can still override
+the DXGI ordering, so the preview warns when more than one adapter is present.
+Integrated/shared-only adapters receive a conservative Performance baseline.
+This remains a capacity-based starting heuristic, **not a measured optimum**:
+VRAM does not measure GPU compute performance or CPU bottlenecks. Compare F9
+captures under equivalent conditions before judging.
 
 The prototype looks for one and only one accessible `GameUserSettings.ini` under
 `%LOCALAPPDATA%\\Bodycam\\Saved\\Config\\Window`, `Windows` or `WindowsNoEditor`.
