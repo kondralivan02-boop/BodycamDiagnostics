@@ -47,6 +47,12 @@ int main() {
     check(analyzeAutoTuneFeedback(missing).kind == AutoTuneFeedbackKind::Inconclusive,
           "missing telemetry remains inconclusive");
 
+    StutterCorrelationResult sparse;
+    sparse.valid = true;
+    sparse.events = {makeEvent(true, false), makeEvent(true, false), makeEvent(false, false)};
+    check(analyzeAutoTuneFeedback(sparse).kind == AutoTuneFeedbackKind::Inconclusive,
+          "sparse telemetry matching must not trigger a profile recommendation");
+
     StutterCorrelationResult clean;
     clean.valid = true;
     check(analyzeAutoTuneFeedback(clean).kind == AutoTuneFeedbackKind::Inconclusive,

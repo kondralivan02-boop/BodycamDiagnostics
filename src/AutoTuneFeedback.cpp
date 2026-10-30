@@ -39,9 +39,11 @@ AutoTuneFeedback analyzeAutoTuneFeedback(const StutterCorrelationResult& c) {
     };
     const auto classified = r.gpuPressureEvents + r.cpuPressureEvents + r.mixedPressureEvents;
     const bool covered = r.telemetryMatchedEvents >= 2 &&
+        coverage(r.telemetryMatchedEvents, r.stutterEvents, 60) &&
         coverage(r.gpuMetricCoverageEvents, r.telemetryMatchedEvents, 60) &&
         coverage(r.cpuMetricCoverageEvents, r.telemetryMatchedEvents, 60);
     if (classified >= 5 && covered &&
+        coverage(r.telemetryMatchedEvents, r.stutterEvents, 80) &&
         coverage(r.gpuMetricCoverageEvents, r.telemetryMatchedEvents, 80) &&
         coverage(r.cpuMetricCoverageEvents, r.telemetryMatchedEvents, 80)) {
         r.confidence = AutoTuneFeedbackConfidence::High;
