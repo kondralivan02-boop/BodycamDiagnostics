@@ -9,9 +9,11 @@ inline wchar_t asciiLower(wchar_t value) noexcept {
         ? static_cast<wchar_t>(value - L'A' + L'a')
         : value;
 }
-inline bool containsInsensitive(std::wstring_view text, std::wstring_view token) noexcept {
-    if (token.empty() || token.size() > text.size()) return false;
-    for (std::size_t i = 0; i <= text.size() - token.size(); ++i) {
+inline std::size_t findInsensitive(std::wstring_view text, std::wstring_view token,
+                                   std::size_t start = 0) noexcept {
+    if (token.empty() || token.size() > text.size() || start > text.size() - token.size())
+        return std::wstring_view::npos;
+    for (std::size_t i = start; i <= text.size() - token.size(); ++i) {
         bool match = true;
         for (std::size_t j = 0; j < token.size(); ++j) {
             if (asciiLower(text[i + j]) != asciiLower(token[j])) {
@@ -19,9 +21,12 @@ inline bool containsInsensitive(std::wstring_view text, std::wstring_view token)
                 break;
             }
         }
-        if (match) return true;
+        if (match) return i;
     }
-    return false;
+    return std::wstring_view::npos;
+}
+inline bool containsInsensitive(std::wstring_view text, std::wstring_view token) noexcept {
+    return findInsensitive(text, token) != std::wstring_view::npos;
 }
 
 // Windows GPU Engine instance names carry the owning PID and engine type.
@@ -30,7 +35,7 @@ inline bool isTargetProcess3DEngine(std::wstring_view counterPath,
                                     std::uint32_t processId) {
     const std::wstring pidToken = L"pid_" + std::to_wstring(processId);
     std::size_t pos = 0;
-    while ((pos = counterPath.find(pidToken, pos)) != std::wstring_view::npos) {
+    while ((pos = findInsensitive(counterPath, pidToken, pos)) != std::wstring_view::npos) {
         const auto after = pos + pidToken.size();
         if (after == counterPath.size() || counterPath[after] == L'_' ||
             counterPath[after] == L')') {

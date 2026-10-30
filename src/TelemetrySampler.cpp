@@ -301,9 +301,7 @@ class ProcessThreadCpuReader {
 public:
     bool sample(DWORD processId, double& maxThreadPct) {
         maxThreadPct = 0.0;
-        FILETIME wall{};
-        GetSystemTimeAsFileTime(&wall);
-        const auto wallNow = ftToU64(wall);
+        const auto wallNowMs = GetTickCount64();
 
         HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
         if (snapshot == INVALID_HANDLE_VALUE) return false;
@@ -324,10 +322,12 @@ public:
                     current.emplace(entry.th32ThreadID, cpuNow);
                     const auto previous = previous_.find(entry.th32ThreadID);
                     if (previous != previous_.end() && cpuNow >= previous->second &&
-                        previousWall_ != 0 && wallNow > previousWall_) {
+                        previousWallMs_ != 0 && wallNowMs > previousWallMs_) {
+                        const double wallDelta100ns =
+                            static_cast<double>(wallNowMs - previousWallMs_) * 10000.0;
                         const double utilization =
                             100.0 * static_cast<double>(cpuNow - previous->second) /
-                            static_cast<double>(wallNow - previousWall_);
+                            wallDelta100ns;
                         if (std::isfinite(utilization)) {
                             maxThreadPct = (std::max)(
                                 maxThreadPct, std::clamp(utilization, 0.0, 100.0));
@@ -341,13 +341,13 @@ public:
         CloseHandle(snapshot);
         if (current.empty()) return false;
         previous_.swap(current);
-        previousWall_ = wallNow;
+        previousWallMs_ = wallNowMs;
         return found;
     }
 
 private:
     std::unordered_map<DWORD, unsigned long long> previous_;
-    unsigned long long previousWall_ = 0;
+    ULONGLONG previousWallMs_ = 0;
 };
 
 std::string isoTimestampLocal() {

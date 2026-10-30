@@ -36,7 +36,8 @@ struct Hardware {
 struct Change { std::string key; int before = 0, after = 0; };
 struct Plan { bool supported = false; std::string reason, updated; std::vector<Change> changes; };
 
-// An initial hardware heuristic, not a measured optimum. Unknown memory fails closed.
+// An initial hardware heuristic, not a measured optimum. Unknown memory fails closed;
+// shared-only UMA receives a conservative Performance fallback.
 // Conservative, vendor-neutral starting profile. VRAM is a capacity signal,
 // not a GPU performance benchmark; CPU/RAM/resolution only cap the baseline.
 // The selected adapter must be unambiguous before any INI change is proposed.
