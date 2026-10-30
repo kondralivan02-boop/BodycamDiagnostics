@@ -74,7 +74,7 @@ target_include_directories(
     src
     "${CMAKE_BINARY_DIR}/generated")
 target_compile_definitions(BodycamDiagnostics PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt uuid)
+target_link_libraries(BodycamDiagnostics PRIVATE comctl32 shell32 shlwapi advapi32 ole32 dwmapi uxtheme wevtapi bcrypt uuid pdh)
 
 if(BODYCAM_EXPERIMENTAL_AUTOTUNE)
     target_sources(BodycamDiagnostics PRIVATE src/AutoTuneWindows.cpp)
@@ -133,6 +133,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(GpuEnginePolicyTests tests/GpuEnginePolicyTests.cpp)
+    target_include_directories(GpuEnginePolicyTests PRIVATE src)
+    add_test(NAME GpuEnginePolicyTests COMMAND GpuEnginePolicyTests)
+    if(MSVC)
+        target_compile_options(GpuEnginePolicyTests PRIVATE /utf-8 /W4 /WX)
+    endif()
     add_executable(AutoTuneGpuPolicyTests tests/AutoTuneGpuPolicyTests.cpp)
     target_include_directories(AutoTuneGpuPolicyTests PRIVATE src)
     add_test(NAME AutoTuneGpuPolicyTests COMMAND AutoTuneGpuPolicyTests)

@@ -24,6 +24,10 @@ struct StutterTelemetryPoint {
     double gpuMemoryMHz = 0.0;
     double gpuPowerW = 0.0;
     double gpuPowerLimitW = 0.0;
+    bool processGpu3dValid = false;
+    double processGpu3dMaxPct = 0.0;
+    bool processMaxThreadCpuValid = false;
+    double processMaxThreadCpuPct = 0.0;
 };
 
 struct StutterTelemetryDelta {
@@ -35,6 +39,10 @@ struct StutterTelemetryDelta {
     double gpuUtilPct = 0.0;
     double gpuGraphicsMHz = 0.0;
     double gpuPowerW = 0.0;
+    bool processGpu3dValid = false;
+    double processGpu3dMaxPct = 0.0;
+    bool processMaxThreadCpuValid = false;
+    double processMaxThreadCpuPct = 0.0;
 };
 
 struct StutterEvent {
@@ -72,6 +80,10 @@ struct StutterEvent {
     double gpuMemoryMHz = 0.0;
     double gpuPowerW = 0.0;
     double gpuPowerLimitW = 0.0;
+    bool processGpu3dValid = false;
+    double processGpu3dMaxPct = 0.0;
+    bool processMaxThreadCpuValid = false;
+    double processMaxThreadCpuPct = 0.0;
     StutterTelemetryPoint before;
     StutterTelemetryPoint nearest;
     StutterTelemetryPoint after;

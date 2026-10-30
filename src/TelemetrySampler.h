@@ -9,6 +9,10 @@
 struct TelemetrySnapshot {
     bool valid = false;
     bool gpuValid = false;
+    bool processGpu3dValid = false;
+    bool processMaxThreadCpuValid = false;
+    double processGpu3dMaxPct = 0.0;
+    double processMaxThreadCpuPct = 0.0;
     double processCpuPct = 0.0;
     double systemCpuPct = 0.0;
     double workingSetMiB = 0.0;

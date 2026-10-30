@@ -25,7 +25,9 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - PresentMon capture scoped to the Bodycam PID.
 - FFmpeg Desktop Duplication recording with NVIDIA NVENC, split into 15-second MKV chunks.
 - Preflight checks for PresentMon, FFmpeg, trusted SHA-256 values from `runtime-tools.sha256`, `h264_nvenc`, and `ddagrab`.
-- CPU/RAM and NVIDIA GPU/VRAM/temperature/clock telemetry to `telemetry.csv`.
+- Process/system CPU and RAM telemetry to `telemetry.csv`, including the busiest observed process thread.
+- Per-process GPU 3D-engine utilization via Windows PDH GPU Engine counters (vendor-neutral when the WDDM driver exposes them); NVIDIA NVML additionally supplies board utilization, VRAM, temperature, clocks and power.
+- GPU Engine values are the maximum utilization among this process's 3D engine instances, not a sum and not a whole-GPU utilization figure. Missing counters remain blank rather than being reported as zero.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - `summary.json` and `summary.txt` written at the end of each test.
 - Automatic native C++ `report_bundle.zip` containing logs, CSV telemetry/frametimes, system snapshot and summaries; no `tar.exe` or external archiver is required. Video stays outside the ZIP. `video_capture.log` is preserved after mux and included in the report.

@@ -77,6 +77,24 @@ int main() {
     check(hasIndicator(renderPath, "POSSIBLE_DRIVER_RENDER_PATH_STALL"),
           "render-path wait indicator");
 
+    StutterEvent processGpu{};
+    processGpu.frameTimeMs = 150.0;
+    processGpu.telemetryMatched = true;
+    processGpu.processGpu3dValid = true;
+    processGpu.processGpu3dMaxPct = 94.0;
+    classifyStutterIndicators(processGpu);
+    check(hasIndicator(processGpu, "PROCESS_GPU_3D_ENGINE_HIGH"),
+          "per-process GPU 3D engine indicator");
+
+    StutterEvent singleThread{};
+    singleThread.frameTimeMs = 150.0;
+    singleThread.telemetryMatched = true;
+    singleThread.processMaxThreadCpuValid = true;
+    singleThread.processMaxThreadCpuPct = 96.0;
+    classifyStutterIndicators(singleThread);
+    check(hasIndicator(singleThread, "PROCESS_SINGLE_THREAD_NEAR_SATURATION"),
+          "single-thread CPU saturation indicator");
+
     check(cpu.signals.empty(),
           "diagnostic classification must not pollute low-level signals");
 

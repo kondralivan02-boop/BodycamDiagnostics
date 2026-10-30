@@ -276,6 +276,10 @@ struct TelemetryRow {
     double gpuMemoryMHz = 0.0;
     double gpuPowerW = 0.0;
     double gpuPowerLimitW = 0.0;
+    bool processGpu3dValid = false;
+    double processGpu3dMaxPct = 0.0;
+    bool processMaxThreadCpuValid = false;
+    double processMaxThreadCpuPct = 0.0;
 };
 
 bool loadTelemetry(
@@ -313,6 +317,8 @@ bool loadTelemetry(
     const auto gpuMemoryIndex = findColumn(headers, "gpu_memory_mhz");
     const auto gpuPowerIndex = findColumn(headers, "gpu_power_w");
     const auto gpuPowerLimitIndex = findColumn(headers, "gpu_power_limit_w");
+    const auto processGpu3dIndex = findColumn(headers, "process_gpu_3d_max_pct");
+    const auto processMaxThreadIndex = findColumn(headers, "process_max_thread_cpu_pct");
 
     std::string line;
     while (std::getline(in, line)) {
@@ -344,6 +350,8 @@ bool loadTelemetry(
         parseDouble(fields, gpuMemoryIndex, row.gpuMemoryMHz);
         parseDouble(fields, gpuPowerIndex, row.gpuPowerW);
         parseDouble(fields, gpuPowerLimitIndex, row.gpuPowerLimitW);
+        row.processGpu3dValid = parseDouble(fields, processGpu3dIndex, row.processGpu3dMaxPct);
+        row.processMaxThreadCpuValid = parseDouble(fields, processMaxThreadIndex, row.processMaxThreadCpuPct);
         rows.push_back(row);
     }
 
@@ -430,6 +438,10 @@ StutterTelemetryPoint makeTelemetryPoint(
     point.gpuMemoryMHz = row.gpuMemoryMHz;
     point.gpuPowerW = row.gpuPowerW;
     point.gpuPowerLimitW = row.gpuPowerLimitW;
+    point.processGpu3dValid = row.processGpu3dValid;
+    point.processGpu3dMaxPct = row.processGpu3dMaxPct;
+    point.processMaxThreadCpuValid = row.processMaxThreadCpuValid;
+    point.processMaxThreadCpuPct = row.processMaxThreadCpuPct;
     return point;
 }
 
@@ -457,6 +469,10 @@ void copyTelemetry(
     event.gpuMemoryMHz = row.gpuMemoryMHz;
     event.gpuPowerW = row.gpuPowerW;
     event.gpuPowerLimitW = row.gpuPowerLimitW;
+    event.processGpu3dValid = row.processGpu3dValid;
+    event.processGpu3dMaxPct = row.processGpu3dMaxPct;
+    event.processMaxThreadCpuValid = row.processMaxThreadCpuValid;
+    event.processMaxThreadCpuPct = row.processMaxThreadCpuPct;
 }
 
 StutterTelemetryDelta telemetryDelta(
@@ -475,6 +491,12 @@ StutterTelemetryDelta telemetryDelta(
     delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
     delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
     delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
+    delta.processGpu3dValid = from.processGpu3dValid && to.processGpu3dValid;
+    if (delta.processGpu3dValid)
+        delta.processGpu3dMaxPct = to.processGpu3dMaxPct - from.processGpu3dMaxPct;
+    delta.processMaxThreadCpuValid = from.processMaxThreadCpuValid && to.processMaxThreadCpuValid;
+    if (delta.processMaxThreadCpuValid)
+        delta.processMaxThreadCpuPct = to.processMaxThreadCpuPct - from.processMaxThreadCpuPct;
     return delta;
 }
 
@@ -620,7 +642,11 @@ void writeTelemetryPointJson(
          << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
          << ",\"gpu_power_w\":" << p.gpuPowerW
          << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
-         << "}";
+         << ",\"process_gpu_3d_max_pct\":";
+    if (p.processGpu3dValid) json << p.processGpu3dMaxPct; else json << "null";
+    json << ",\"process_max_thread_cpu_pct\":";
+    if (p.processMaxThreadCpuValid) json << p.processMaxThreadCpuPct; else json << "null";
+    json << "}";
 }
 
 void writeTelemetryDeltaJson(
@@ -640,7 +666,11 @@ void writeTelemetryDeltaJson(
          << ",\"gpu_util_pct\":" << d.gpuUtilPct
          << ",\"gpu_graphics_mhz\":" << d.gpuGraphicsMHz
          << ",\"gpu_power_w\":" << d.gpuPowerW
-         << "}";
+         << ",\"process_gpu_3d_max_pct\":";
+    if (d.processGpu3dValid) json << d.processGpu3dMaxPct; else json << "null";
+    json << ",\"process_max_thread_cpu_pct\":";
+    if (d.processMaxThreadCpuValid) json << d.processMaxThreadCpuPct; else json << "null";
+    json << "}";
 }
 
 void writePointText(
@@ -657,6 +687,10 @@ void writePointText(
          << p.processCpuPct << " %, IO "
          << p.processReadMiBps << "/"
          << p.processWriteMiBps << " MiB/s";
+    if (p.processGpu3dValid)
+        text << ", process 3D engine max " << p.processGpu3dMaxPct << " %";
+    if (p.processMaxThreadCpuValid)
+        text << ", max thread CPU " << p.processMaxThreadCpuPct << " %";
 }
 }
 
@@ -716,6 +750,11 @@ void classifyStutterIndicators(StutterEvent& event) {
 
     if (vramPressure)
         addUnique("VRAM_PRESSURE_INDICATOR");
+
+    if (event.processGpu3dValid && event.processGpu3dMaxPct >= 90.0)
+        addUnique("PROCESS_GPU_3D_ENGINE_HIGH");
+    if (event.processMaxThreadCpuValid && event.processMaxThreadCpuPct >= 90.0)
+        addUnique("PROCESS_SINGLE_THREAD_NEAR_SATURATION");
 
     if (event.presentModeChanged)
         addUnique("PRESENT_MODE_CHANGE_INDICATOR");
@@ -982,6 +1021,11 @@ bool writeStutterCorrelationReport(
             json << "      \"gpu_memory_mhz\": " << e.gpuMemoryMHz << ",\n";
             json << "      \"gpu_power_w\": " << e.gpuPowerW << ",\n";
             json << "      \"gpu_power_limit_w\": " << e.gpuPowerLimitW << ",\n";
+            json << "      \"process_gpu_3d_max_pct\": ";
+            if (e.processGpu3dValid) json << e.processGpu3dMaxPct; else json << "null";
+            json << ",\n      \"process_max_thread_cpu_pct\": ";
+            if (e.processMaxThreadCpuValid) json << e.processMaxThreadCpuPct; else json << "null";
+            json << ",\n";
         } else {
             json << ",\n";
         }

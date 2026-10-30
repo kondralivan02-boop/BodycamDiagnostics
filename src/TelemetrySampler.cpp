@@ -1,12 +1,20 @@
 #include "TelemetrySampler.h"
+#include "GpuEnginePolicy.h"
 
 #include <Psapi.h>
+#include <TlHelp32.h>
+#include <Pdh.h>
+#include <PdhMsg.h>
 
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <cmath>
+#include <unordered_map>
+#include <vector>
 
 namespace {
 using nvmlReturn_t = int;
@@ -186,6 +194,161 @@ unsigned long long ftToU64(const FILETIME& ft) {
     return u.QuadPart;
 }
 
+
+class GpuEngineReader {
+public:
+    ~GpuEngineReader() { close(); }
+
+    bool open(DWORD processId) {
+        close();
+        if (PdhOpenQueryW(nullptr, 0, &query_) != ERROR_SUCCESS) return false;
+
+        PDH_HCOUNTER wildcard{};
+        if (PdhAddEnglishCounterW(
+                query_, L"\\GPU Engine(*)\\Utilization Percentage", 0,
+                &wildcard) != ERROR_SUCCESS) {
+            close();
+            return false;
+        }
+
+        DWORD infoBytes = 0;
+        const auto infoStatus = PdhGetCounterInfoW(wildcard, FALSE, &infoBytes, nullptr);
+        if (infoStatus != PDH_MORE_DATA || infoBytes < sizeof(PDH_COUNTER_INFO_W)) {
+            PdhRemoveCounter(wildcard);
+            close();
+            return false;
+        }
+        std::vector<unsigned char> infoBuffer(infoBytes);
+        if (PdhGetCounterInfoW(
+                wildcard, FALSE, &infoBytes,
+                reinterpret_cast<PPDH_COUNTER_INFO_W>(infoBuffer.data())) != ERROR_SUCCESS) {
+            PdhRemoveCounter(wildcard);
+            close();
+            return false;
+        }
+        const auto* info = reinterpret_cast<const PDH_COUNTER_INFO_W*>(infoBuffer.data());
+        const std::wstring localizedWildcard = info->szFullPath ? info->szFullPath : L"";
+        PdhRemoveCounter(wildcard);
+        if (localizedWildcard.empty()) {
+            close();
+            return false;
+        }
+
+        DWORD pathChars = 0;
+        const auto expandStatus = PdhExpandWildCardPathW(
+            nullptr, localizedWildcard.c_str(), nullptr, &pathChars, 0);
+        if (expandStatus != PDH_MORE_DATA || pathChars == 0 || pathChars > 1024 * 1024) {
+            close();
+            return false;
+        }
+        std::vector<wchar_t> expanded(pathChars);
+        if (PdhExpandWildCardPathW(
+                nullptr, localizedWildcard.c_str(), expanded.data(), &pathChars, 0) != ERROR_SUCCESS) {
+            close();
+            return false;
+        }
+
+        for (const wchar_t* path = expanded.data(); *path;
+             path += std::wcslen(path) + 1) {
+            if (!telemetry::isTargetProcess3DEngine(path, processId)) continue;
+            PDH_HCOUNTER counter{};
+            if (PdhAddCounterW(query_, path, 0, &counter) == ERROR_SUCCESS)
+                counters_.push_back(counter);
+        }
+        if (counters_.empty() || PdhCollectQueryData(query_) != ERROR_SUCCESS) {
+            close();
+            return false;
+        }
+        return true;
+    }
+
+    bool sample(double& maxUtilizationPct) {
+        maxUtilizationPct = 0.0;
+        if (!query_ || counters_.empty() ||
+            PdhCollectQueryData(query_) != ERROR_SUCCESS) return false;
+
+        bool found = false;
+        for (const auto counter : counters_) {
+            PDH_FMT_COUNTERVALUE value{};
+            DWORD type = 0;
+            if (PdhGetFormattedCounterValue(
+                    counter, PDH_FMT_DOUBLE, &type, &value) != ERROR_SUCCESS ||
+                (value.CStatus != PDH_CSTATUS_VALID_DATA &&
+                 value.CStatus != PDH_CSTATUS_NEW_DATA) ||
+                !std::isfinite(value.doubleValue)) {
+                continue;
+            }
+            maxUtilizationPct = (std::max)(
+                maxUtilizationPct, std::clamp(value.doubleValue, 0.0, 100.0));
+            found = true;
+        }
+        return found;
+    }
+
+    void close() noexcept {
+        counters_.clear();
+        if (query_) PdhCloseQuery(query_);
+        query_ = nullptr;
+    }
+
+private:
+    PDH_HQUERY query_ = nullptr;
+    std::vector<PDH_HCOUNTER> counters_;
+};
+
+class ProcessThreadCpuReader {
+public:
+    bool sample(DWORD processId, double& maxThreadPct) {
+        maxThreadPct = 0.0;
+        FILETIME wall{};
+        GetSystemTimeAsFileTime(&wall);
+        const auto wallNow = ftToU64(wall);
+
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+        std::unordered_map<DWORD, unsigned long long> current;
+        current.reserve(previous_.size() + 16);
+        THREADENTRY32 entry{};
+        entry.dwSize = sizeof(entry);
+        bool found = false;
+        if (Thread32First(snapshot, &entry)) {
+            do {
+                if (entry.th32OwnerProcessID != processId) continue;
+                HANDLE thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ThreadID);
+                if (!thread) continue;
+                FILETIME created{}, exited{}, kernel{}, user{};
+                if (GetThreadTimes(thread, &created, &exited, &kernel, &user)) {
+                    const auto cpuNow = ftToU64(kernel) + ftToU64(user);
+                    current.emplace(entry.th32ThreadID, cpuNow);
+                    const auto previous = previous_.find(entry.th32ThreadID);
+                    if (previous != previous_.end() && cpuNow >= previous->second &&
+                        previousWall_ != 0 && wallNow > previousWall_) {
+                        const double utilization =
+                            100.0 * static_cast<double>(cpuNow - previous->second) /
+                            static_cast<double>(wallNow - previousWall_);
+                        if (std::isfinite(utilization)) {
+                            maxThreadPct = (std::max)(
+                                maxThreadPct, std::clamp(utilization, 0.0, 100.0));
+                            found = true;
+                        }
+                    }
+                }
+                CloseHandle(thread);
+            } while (Thread32Next(snapshot, &entry));
+        }
+        CloseHandle(snapshot);
+        if (current.empty()) return false;
+        previous_.swap(current);
+        previousWall_ = wallNow;
+        return found;
+    }
+
+private:
+    std::unordered_map<DWORD, unsigned long long> previous_;
+    unsigned long long previousWall_ = 0;
+};
+
 std::string isoTimestampLocal() {
     SYSTEMTIME st{};
     GetLocalTime(&st);
@@ -258,7 +421,8 @@ bool TelemetrySampler::start(
         << "gpu_util_pct,gpu_mem_util_pct,"
         << "vram_used_mib,vram_total_mib,"
         << "gpu_temp_c,gpu_graphics_mhz,gpu_memory_mhz,"
-        << "gpu_power_w,gpu_power_limit_w\n";
+        << "gpu_power_w,gpu_power_limit_w,"
+        << "process_gpu_3d_max_pct,process_max_thread_cpu_pct\n";
 
     probe.flush();
     probe.close();
@@ -331,6 +495,9 @@ void TelemetrySampler::worker() {
 
     NvmlReader nvml;
     const bool nvmlReady = nvml.open();
+    GpuEngineReader gpuEngine;
+    const bool gpuEngineReady = gpuEngine.open(targetPid_);
+    ProcessThreadCpuReader threadCpu;
 
     while (running_.load()) {
         const auto wakeAt =
@@ -482,11 +649,21 @@ void TelemetrySampler::worker() {
                 memMHz,
                 gpuPowerW,
                 gpuPowerLimitW);
+        double processGpu3dMaxPct = 0.0;
+        const bool processGpu3dOk =
+            gpuEngineReady && gpuEngine.sample(processGpu3dMaxPct);
+        double processMaxThreadCpuPct = 0.0;
+        const bool processMaxThreadCpuOk =
+            threadCpu.sample(targetPid_, processMaxThreadCpuPct);
 
         {
             std::scoped_lock lock(snapshotMutex_);
             latest_.valid = true;
             latest_.gpuValid = gpuOk;
+            latest_.processGpu3dValid = processGpu3dOk;
+            latest_.processMaxThreadCpuValid = processMaxThreadCpuOk;
+            latest_.processGpu3dMaxPct = processGpu3dMaxPct;
+            latest_.processMaxThreadCpuPct = processMaxThreadCpuPct;
             latest_.processCpuPct = processCpu;
             latest_.systemCpuPct = systemCpu;
             latest_.workingSetMiB = workingSetMiB;
@@ -536,6 +713,10 @@ void TelemetrySampler::worker() {
             out << ",,,,,,,,";
         }
 
+        out << ',';
+        if (processGpu3dOk) out << processGpu3dMaxPct;
+        out << ',';
+        if (processMaxThreadCpuOk) out << processMaxThreadCpuPct;
         out << '\n';
         out.flush();
         std::this_thread::sleep_until(wakeAt);
