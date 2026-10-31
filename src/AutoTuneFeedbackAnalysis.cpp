@@ -1,4 +1,7 @@
 #include "AutoTuneFeedback.h"
+
+#include <cmath>
+
 namespace {
 bool gpuBusyEvidence(const StutterEvent& e) {
     return e.gpuBusyMs >= 100.0 && e.gpuBusyMs >= e.frameTimeMs * 0.25;
@@ -17,7 +20,15 @@ AutoTuneFeedback analyzeAutoTuneFeedback(const StutterCorrelationResult& c) {
     }
     r.stutterEvents = c.events.size();
     for (const auto& e : c.events) {
-        if (e.telemetryMatched) ++r.telemetryMatchedEvents;
+        if (!e.telemetryMatched) continue;
+        if (!std::isfinite(e.telemetryDeltaMs) ||
+            e.telemetryDeltaMs < 0.0 ||
+            e.telemetryDeltaMs > kAutoTuneMaxTelemetryDeltaMs) {
+            ++r.staleTelemetryEvents;
+            continue;
+        }
+
+        ++r.telemetryMatchedEvents;
         if (e.processGpu3dValid) ++r.gpuMetricCoverageEvents;
         if (e.processMaxThreadCpuValid) ++r.cpuMetricCoverageEvents;
         const bool gpu = e.processGpu3dValid && e.processGpu3dMaxPct >= 90.0 && gpuBusyEvidence(e);

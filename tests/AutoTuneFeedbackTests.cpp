@@ -8,6 +8,7 @@ void check(bool value, const char* message) {
 StutterEvent makeEvent(bool gpu, bool cpu) {
     StutterEvent e{};
     e.telemetryMatched = true;
+    e.telemetryDeltaMs = 250.0;
     e.frameTimeMs = 150.0;
     e.gpuBusyMs = gpu ? 120.0 : 0.0;
     e.cpuBusyMs = cpu ? 120.0 : 0.0;
@@ -57,6 +58,29 @@ int main() {
                      noTelemetry, noTelemetry, noTelemetry};
     check(analyzeAutoTuneFeedback(sparse).kind == AutoTuneFeedbackKind::Inconclusive,
           "sparse telemetry matching must not trigger a profile recommendation");
+
+    StutterCorrelationResult freshnessBoundary;
+    freshnessBoundary.valid = true;
+    auto boundaryA = makeEvent(true, false);
+    auto boundaryB = makeEvent(true, false);
+    boundaryA.telemetryDeltaMs = kAutoTuneMaxTelemetryDeltaMs;
+    boundaryB.telemetryDeltaMs = kAutoTuneMaxTelemetryDeltaMs;
+    freshnessBoundary.events = {boundaryA, boundaryB};
+    check(analyzeAutoTuneFeedback(freshnessBoundary).kind == AutoTuneFeedbackKind::ReduceGraphicsCandidate,
+          "telemetry exactly at the freshness cutoff remains eligible");
+
+    StutterCorrelationResult stale;
+    stale.valid = true;
+    auto staleA = makeEvent(true, false);
+    auto staleB = makeEvent(true, false);
+    staleA.telemetryDeltaMs = kAutoTuneMaxTelemetryDeltaMs + 1.0;
+    staleB.telemetryDeltaMs = kAutoTuneMaxTelemetryDeltaMs + 1.0;
+    stale.events = {staleA, staleB};
+    const auto staleResult = analyzeAutoTuneFeedback(stale);
+    check(staleResult.kind == AutoTuneFeedbackKind::Inconclusive,
+          "stale telemetry must not trigger a profile recommendation");
+    check(staleResult.telemetryMatchedEvents == 0 && staleResult.staleTelemetryEvents == 2,
+          "stale samples must be counted as excluded, not fresh matches");
 
     StutterCorrelationResult clean;
     clean.valid = true;
