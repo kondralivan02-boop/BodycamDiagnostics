@@ -46,7 +46,13 @@ public:
         if (module_)
             return true;
 
-        module_ = LoadLibraryW(L"nvml.dll");
+        // NVML is an optional driver-provided library. Restrict lookup to
+        // System32 so a DLL beside the executable/current directory cannot
+        // be loaded through the default search order.
+        module_ = LoadLibraryExW(
+            L"nvml.dll",
+            nullptr,
+            LOAD_LIBRARY_SEARCH_SYSTEM32);
         if (!module_)
             return false;
 
@@ -651,13 +657,25 @@ void TelemetrySampler::worker() {
                 memMHz,
                 gpuPowerW,
                 gpuPowerLimitW);
-        if (!gpuEngineReady && std::chrono::steady_clock::now() >= nextGpuEngineRetry) {
+        auto gpuEngineNow = std::chrono::steady_clock::now();
+        if (!gpuEngineReady && gpuEngineNow >= nextGpuEngineRetry) {
             gpuEngineReady = gpuEngine.open(targetPid_);
             nextGpuEngineRetry = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         }
         double processGpu3dMaxPct = 0.0;
-        const bool processGpu3dOk =
-            gpuEngineReady && gpuEngine.sample(processGpu3dMaxPct);
+        bool processGpu3dOk = false;
+        if (gpuEngineReady) {
+            processGpu3dOk = gpuEngine.sample(processGpu3dMaxPct);
+            if (!processGpu3dOk) {
+                // A PDH query can become invalid after a driver/engine reset.
+                // Recreate it after a bounded delay instead of leaving GPU
+                // telemetry permanently disabled for the rest of the session.
+                gpuEngine.close();
+                gpuEngineReady = false;
+                nextGpuEngineRetry =
+                    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            }
+        }
         double processMaxThreadCpuPct = 0.0;
         const bool processMaxThreadCpuOk =
             threadCpu.sample(targetPid_, processMaxThreadCpuPct);
