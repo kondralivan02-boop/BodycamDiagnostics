@@ -267,6 +267,7 @@ struct TelemetryRow {
     double processWriteMiBps = 0.0;
     double systemMemoryLoadPct = 0.0;
     double systemMemoryAvailableMiB = 0.0;
+    bool gpuBoardTelemetryValid = false;
     double gpuUtilPct = 0.0;
     double gpuMemoryUtilPct = 0.0;
     double vramUsedMiB = 0.0;
@@ -341,7 +342,7 @@ bool loadTelemetry(
         parseDouble(fields, processWriteIndex, row.processWriteMiBps);
         parseDouble(fields, memoryLoadIndex, row.systemMemoryLoadPct);
         parseDouble(fields, memoryAvailableIndex, row.systemMemoryAvailableMiB);
-        parseDouble(fields, gpuUtilIndex, row.gpuUtilPct);
+        row.gpuBoardTelemetryValid = parseDouble(fields, gpuUtilIndex, row.gpuUtilPct);
         parseDouble(fields, gpuMemoryUtilIndex, row.gpuMemoryUtilPct);
         parseDouble(fields, vramUsedIndex, row.vramUsedMiB);
         parseDouble(fields, vramTotalIndex, row.vramTotalMiB);
@@ -429,6 +430,7 @@ StutterTelemetryPoint makeTelemetryPoint(
     point.processWriteMiBps = row.processWriteMiBps;
     point.systemMemoryLoadPct = row.systemMemoryLoadPct;
     point.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
+    point.gpuBoardTelemetryValid = row.gpuBoardTelemetryValid;
     point.gpuUtilPct = row.gpuUtilPct;
     point.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
     point.vramUsedMiB = row.vramUsedMiB;
@@ -460,6 +462,7 @@ void copyTelemetry(
     event.processWriteMiBps = row.processWriteMiBps;
     event.systemMemoryLoadPct = row.systemMemoryLoadPct;
     event.systemMemoryAvailableMiB = row.systemMemoryAvailableMiB;
+    event.gpuBoardTelemetryValid = row.gpuBoardTelemetryValid;
     event.gpuUtilPct = row.gpuUtilPct;
     event.gpuMemoryUtilPct = row.gpuMemoryUtilPct;
     event.vramUsedMiB = row.vramUsedMiB;
@@ -488,9 +491,13 @@ StutterTelemetryDelta telemetryDelta(
     delta.systemCpuPct = to.systemCpuPct - from.systemCpuPct;
     delta.processReadMiBps = to.processReadMiBps - from.processReadMiBps;
     delta.processWriteMiBps = to.processWriteMiBps - from.processWriteMiBps;
-    delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
-    delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
-    delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
+    delta.gpuBoardTelemetryValid =
+        from.gpuBoardTelemetryValid && to.gpuBoardTelemetryValid;
+    if (delta.gpuBoardTelemetryValid) {
+        delta.gpuUtilPct = to.gpuUtilPct - from.gpuUtilPct;
+        delta.gpuGraphicsMHz = to.gpuGraphicsMHz - from.gpuGraphicsMHz;
+        delta.gpuPowerW = to.gpuPowerW - from.gpuPowerW;
+    }
     delta.processGpu3dValid = from.processGpu3dValid && to.processGpu3dValid;
     if (delta.processGpu3dValid)
         delta.processGpu3dMaxPct = to.processGpu3dMaxPct - from.processGpu3dMaxPct;
@@ -570,16 +577,24 @@ void classifySignals(StutterEvent& event) {
     if (event.gpuWaitMs >= 100.0 && event.gpuWaitMs >= frame * 0.25)
         event.signals.push_back("GPU_WAIT_HIGH");
 
-    if (event.beforeToNearest.valid && event.beforeToNearest.gpuUtilPct <= -30.0)
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.gpuBoardTelemetryValid &&
+        event.beforeToNearest.gpuUtilPct <= -30.0)
         event.signals.push_back("GPU_UTIL_DROP_AROUND_STALL");
 
-    if (event.beforeToNearest.valid && event.beforeToNearest.gpuGraphicsMHz <= -500.0)
+    if (event.beforeToNearest.valid &&
+        event.beforeToNearest.gpuBoardTelemetryValid &&
+        event.beforeToNearest.gpuGraphicsMHz <= -500.0)
         event.signals.push_back("GPU_CLOCK_DROP_AROUND_STALL");
 
-    if (event.nearestToAfter.valid && event.nearestToAfter.gpuUtilPct >= 30.0)
+    if (event.nearestToAfter.valid &&
+        event.nearestToAfter.gpuBoardTelemetryValid &&
+        event.nearestToAfter.gpuUtilPct >= 30.0)
         event.signals.push_back("GPU_UTIL_RECOVERY_AFTER_STALL");
 
-    if (event.nearestToAfter.valid && event.nearestToAfter.gpuGraphicsMHz >= 500.0)
+    if (event.nearestToAfter.valid &&
+        event.nearestToAfter.gpuBoardTelemetryValid &&
+        event.nearestToAfter.gpuGraphicsMHz >= 500.0)
         event.signals.push_back("GPU_CLOCK_RECOVERY_AFTER_STALL");
 
     if (event.beforeToNearest.valid && event.beforeToNearest.processReadMiBps >= 50.0)
@@ -633,16 +648,27 @@ void writeTelemetryPointJson(
          << ",\"process_write_mib_s\":" << p.processWriteMiBps
          << ",\"system_memory_load_pct\":" << p.systemMemoryLoadPct
          << ",\"system_memory_available_mib\":" << p.systemMemoryAvailableMiB
-         << ",\"gpu_util_pct\":" << p.gpuUtilPct
-         << ",\"gpu_mem_util_pct\":" << p.gpuMemoryUtilPct
-         << ",\"vram_used_mib\":" << p.vramUsedMiB
-         << ",\"vram_total_mib\":" << p.vramTotalMiB
-         << ",\"gpu_temp_c\":" << p.gpuTempC
-         << ",\"gpu_graphics_mhz\":" << p.gpuGraphicsMHz
-         << ",\"gpu_memory_mhz\":" << p.gpuMemoryMHz
-         << ",\"gpu_power_w\":" << p.gpuPowerW
-         << ",\"gpu_power_limit_w\":" << p.gpuPowerLimitW
-         << ",\"process_gpu_3d_max_pct\":";
+         << ",\"gpu_board_telemetry_valid\":"
+         << (p.gpuBoardTelemetryValid ? "true" : "false")
+         << ",\"gpu_util_pct\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuUtilPct; else json << "null";
+    json << ",\"gpu_mem_util_pct\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuMemoryUtilPct; else json << "null";
+    json << ",\"vram_used_mib\":";
+    if (p.gpuBoardTelemetryValid) json << p.vramUsedMiB; else json << "null";
+    json << ",\"vram_total_mib\":";
+    if (p.gpuBoardTelemetryValid) json << p.vramTotalMiB; else json << "null";
+    json << ",\"gpu_temp_c\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuTempC; else json << "null";
+    json << ",\"gpu_graphics_mhz\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuGraphicsMHz; else json << "null";
+    json << ",\"gpu_memory_mhz\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuMemoryMHz; else json << "null";
+    json << ",\"gpu_power_w\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuPowerW; else json << "null";
+    json << ",\"gpu_power_limit_w\":";
+    if (p.gpuBoardTelemetryValid) json << p.gpuPowerLimitW; else json << "null";
+    json << ",\"process_gpu_3d_max_pct\":";
     if (p.processGpu3dValid) json << p.processGpu3dMaxPct; else json << "null";
     json << ",\"process_max_thread_cpu_pct\":";
     if (p.processMaxThreadCpuValid) json << p.processMaxThreadCpuPct; else json << "null";
@@ -663,10 +689,15 @@ void writeTelemetryDeltaJson(
          << ",\"system_cpu_pct\":" << d.systemCpuPct
          << ",\"process_read_mib_s\":" << d.processReadMiBps
          << ",\"process_write_mib_s\":" << d.processWriteMiBps
-         << ",\"gpu_util_pct\":" << d.gpuUtilPct
-         << ",\"gpu_graphics_mhz\":" << d.gpuGraphicsMHz
-         << ",\"gpu_power_w\":" << d.gpuPowerW
-         << ",\"process_gpu_3d_max_pct\":";
+         << ",\"gpu_board_telemetry_valid\":"
+         << (d.gpuBoardTelemetryValid ? "true" : "false")
+         << ",\"gpu_util_pct\":";
+    if (d.gpuBoardTelemetryValid) json << d.gpuUtilPct; else json << "null";
+    json << ",\"gpu_graphics_mhz\":";
+    if (d.gpuBoardTelemetryValid) json << d.gpuGraphicsMHz; else json << "null";
+    json << ",\"gpu_power_w\":";
+    if (d.gpuBoardTelemetryValid) json << d.gpuPowerW; else json << "null";
+    json << ",\"process_gpu_3d_max_pct\":";
     if (d.processGpu3dValid) json << d.processGpu3dMaxPct; else json << "null";
     json << ",\"process_max_thread_cpu_pct\":";
     if (d.processMaxThreadCpuValid) json << d.processMaxThreadCpuPct; else json << "null";
@@ -682,9 +713,12 @@ void writePointText(
         return;
     }
 
-    text << p.offsetMs << " ms, GPU "
-         << p.gpuUtilPct << " %, CPU "
-         << p.processCpuPct << " %, IO "
+    text << p.offsetMs << " ms, ";
+    if (p.gpuBoardTelemetryValid)
+        text << "GPU " << p.gpuUtilPct << " %";
+    else
+        text << "GPU board telemetry unavailable";
+    text << ", CPU " << p.processCpuPct << " %, IO "
          << p.processReadMiBps << "/"
          << p.processWriteMiBps << " MiB/s";
     if (p.processGpu3dValid)
@@ -717,6 +751,7 @@ void classifyStutterIndicators(StutterEvent& event) {
         event.gpuWaitMs >= frame * 0.25;
     const bool gpuLowNearStall =
         event.telemetryMatched &&
+        event.gpuBoardTelemetryValid &&
         frame >= 250.0 &&
         event.gpuUtilPct <= 15.0;
     const bool ioSpike =
@@ -1012,15 +1047,27 @@ bool writeStutterCorrelationReport(
             json << "      \"process_write_mib_s\": " << e.processWriteMiBps << ",\n";
             json << "      \"system_memory_load_pct\": " << e.systemMemoryLoadPct << ",\n";
             json << "      \"system_memory_available_mib\": " << e.systemMemoryAvailableMiB << ",\n";
-            json << "      \"gpu_util_pct\": " << e.gpuUtilPct << ",\n";
-            json << "      \"gpu_mem_util_pct\": " << e.gpuMemoryUtilPct << ",\n";
-            json << "      \"vram_used_mib\": " << e.vramUsedMiB << ",\n";
-            json << "      \"vram_total_mib\": " << e.vramTotalMiB << ",\n";
-            json << "      \"gpu_temp_c\": " << e.gpuTempC << ",\n";
-            json << "      \"gpu_graphics_mhz\": " << e.gpuGraphicsMHz << ",\n";
-            json << "      \"gpu_memory_mhz\": " << e.gpuMemoryMHz << ",\n";
-            json << "      \"gpu_power_w\": " << e.gpuPowerW << ",\n";
-            json << "      \"gpu_power_limit_w\": " << e.gpuPowerLimitW << ",\n";
+            json << "      \"gpu_board_telemetry_valid\": "
+                 << (e.gpuBoardTelemetryValid ? "true" : "false") << ",\n";
+            json << "      \"gpu_util_pct\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuUtilPct; else json << "null";
+            json << ",\n      \"gpu_mem_util_pct\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuMemoryUtilPct; else json << "null";
+            json << ",\n      \"vram_used_mib\": ";
+            if (e.gpuBoardTelemetryValid) json << e.vramUsedMiB; else json << "null";
+            json << ",\n      \"vram_total_mib\": ";
+            if (e.gpuBoardTelemetryValid) json << e.vramTotalMiB; else json << "null";
+            json << ",\n      \"gpu_temp_c\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuTempC; else json << "null";
+            json << ",\n      \"gpu_graphics_mhz\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuGraphicsMHz; else json << "null";
+            json << ",\n      \"gpu_memory_mhz\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuMemoryMHz; else json << "null";
+            json << ",\n      \"gpu_power_w\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuPowerW; else json << "null";
+            json << ",\n      \"gpu_power_limit_w\": ";
+            if (e.gpuBoardTelemetryValid) json << e.gpuPowerLimitW; else json << "null";
+            json << ",\n";
             json << "      \"process_gpu_3d_max_pct\": ";
             if (e.processGpu3dValid) json << e.processGpu3dMaxPct; else json << "null";
             json << ",\n      \"process_max_thread_cpu_pct\": ";
@@ -1134,19 +1181,23 @@ bool writeStutterCorrelationReport(
             text << "System memory load / available: "
                  << e.systemMemoryLoadPct << " % / "
                  << e.systemMemoryAvailableMiB << " MiB\n";
-            text << "GPU util / memory util: "
-                 << e.gpuUtilPct << " / "
-                 << e.gpuMemoryUtilPct << " %\n";
-            text << "VRAM used / total: "
-                 << e.vramUsedMiB << " / "
-                 << e.vramTotalMiB << " MiB\n";
-            text << "GPU temp: " << e.gpuTempC << " C\n";
-            text << "GPU graphics / memory clock: "
-                 << e.gpuGraphicsMHz << " / "
-                 << e.gpuMemoryMHz << " MHz\n";
-            text << "GPU power / limit: "
-                 << e.gpuPowerW << " / "
-                 << e.gpuPowerLimitW << " W\n";
+            if (e.gpuBoardTelemetryValid) {
+                text << "GPU util / memory util: "
+                     << e.gpuUtilPct << " / "
+                     << e.gpuMemoryUtilPct << " %\n";
+                text << "VRAM used / total: "
+                     << e.vramUsedMiB << " / "
+                     << e.vramTotalMiB << " MiB\n";
+                text << "GPU temp: " << e.gpuTempC << " C\n";
+                text << "GPU graphics / memory clock: "
+                     << e.gpuGraphicsMHz << " / "
+                     << e.gpuMemoryMHz << " MHz\n";
+                text << "GPU power / limit: "
+                     << e.gpuPowerW << " / "
+                     << e.gpuPowerLimitW << " W\n";
+            } else {
+                text << "GPU board telemetry: unavailable (NVML source absent)\n";
+            }
         } else {
             text << "Telemetry: no sample within 1500 ms\n";
         }
@@ -1161,10 +1212,14 @@ bool writeStutterCorrelationReport(
 
         text << "Telemetry deltas [before->nearest / nearest->after]: ";
         if (e.beforeToNearest.valid) {
-            text << "GPU " << e.beforeToNearest.gpuUtilPct << " %, "
-                 << "clock " << e.beforeToNearest.gpuGraphicsMHz << " MHz, "
-                 << "power " << e.beforeToNearest.gpuPowerW << " W, "
-                 << "read " << e.beforeToNearest.processReadMiBps << " MiB/s";
+            if (e.beforeToNearest.gpuBoardTelemetryValid) {
+                text << "GPU " << e.beforeToNearest.gpuUtilPct << " %, "
+                     << "clock " << e.beforeToNearest.gpuGraphicsMHz << " MHz, "
+                     << "power " << e.beforeToNearest.gpuPowerW << " W, ";
+            } else {
+                text << "GPU board unavailable, ";
+            }
+            text << "read " << e.beforeToNearest.processReadMiBps << " MiB/s";
         } else {
             text << "none";
         }
@@ -1172,10 +1227,14 @@ bool writeStutterCorrelationReport(
         text << " / ";
 
         if (e.nearestToAfter.valid) {
-            text << "GPU " << e.nearestToAfter.gpuUtilPct << " %, "
-                 << "clock " << e.nearestToAfter.gpuGraphicsMHz << " MHz, "
-                 << "power " << e.nearestToAfter.gpuPowerW << " W, "
-                 << "read " << e.nearestToAfter.processReadMiBps << " MiB/s";
+            if (e.nearestToAfter.gpuBoardTelemetryValid) {
+                text << "GPU " << e.nearestToAfter.gpuUtilPct << " %, "
+                     << "clock " << e.nearestToAfter.gpuGraphicsMHz << " MHz, "
+                     << "power " << e.nearestToAfter.gpuPowerW << " W, ";
+            } else {
+                text << "GPU board unavailable, ";
+            }
+            text << "read " << e.nearestToAfter.processReadMiBps << " MiB/s";
         } else {
             text << "none";
         }

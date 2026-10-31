@@ -36,10 +36,21 @@ int main() {
     StutterEvent gpuIdle{};
     gpuIdle.frameTimeMs = 300.0;
     gpuIdle.telemetryMatched = true;
+    gpuIdle.gpuBoardTelemetryValid = true;
     gpuIdle.gpuUtilPct = 8.0;
     classifyStutterIndicators(gpuIdle);
     check(hasIndicator(gpuIdle, "GPU_IDLE_STALL_INDICATOR"),
           "GPU-idle stall indicator");
+
+    StutterEvent unavailableGpu{};
+    unavailableGpu.frameTimeMs = 300.0;
+    unavailableGpu.telemetryMatched = true;
+    unavailableGpu.gpuUtilPct = 0.0;
+    classifyStutterIndicators(unavailableGpu);
+    check(!hasIndicator(unavailableGpu, "GPU_IDLE_STALL_INDICATOR"),
+          "missing vendor-specific board telemetry must not look like zero GPU load");
+    check(!hasIndicator(unavailableGpu, "POSSIBLE_DRIVER_RENDER_PATH_STALL"),
+          "missing board telemetry must not create a render-path inference");
 
     StutterEvent io{};
     io.frameTimeMs = 150.0;
@@ -72,6 +83,7 @@ int main() {
     renderPath.frameTimeMs = 300.0;
     renderPath.gpuWaitMs = 220.0;
     renderPath.telemetryMatched = true;
+    renderPath.gpuBoardTelemetryValid = true;
     renderPath.gpuUtilPct = 7.0;
     classifyStutterIndicators(renderPath);
     check(hasIndicator(renderPath, "POSSIBLE_DRIVER_RENDER_PATH_STALL"),

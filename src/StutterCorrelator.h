@@ -15,6 +15,7 @@ struct StutterTelemetryPoint {
     double processWriteMiBps = 0.0;
     double systemMemoryLoadPct = 0.0;
     double systemMemoryAvailableMiB = 0.0;
+    bool gpuBoardTelemetryValid = false;
     double gpuUtilPct = 0.0;
     double gpuMemoryUtilPct = 0.0;
     double vramUsedMiB = 0.0;
@@ -36,6 +37,7 @@ struct StutterTelemetryDelta {
     double systemCpuPct = 0.0;
     double processReadMiBps = 0.0;
     double processWriteMiBps = 0.0;
+    bool gpuBoardTelemetryValid = false;
     double gpuUtilPct = 0.0;
     double gpuGraphicsMHz = 0.0;
     double gpuPowerW = 0.0;
@@ -71,6 +73,7 @@ struct StutterEvent {
     double processWriteMiBps = 0.0;
     double systemMemoryLoadPct = 0.0;
     double systemMemoryAvailableMiB = 0.0;
+    bool gpuBoardTelemetryValid = false;
     double gpuUtilPct = 0.0;
     double gpuMemoryUtilPct = 0.0;
     double vramUsedMiB = 0.0;
