@@ -93,6 +93,7 @@ Before performance comparisons are trusted:
 - any unexpected Bodycam exit must leave recoverable diagnostics in the session/mirror
 - diagnostic indicators and AutoTune feedback are correlations only; they are not proof of root cause
 - unsupported per-process GPU or CPU-thread counters remain blank, not zero
+- optional NVML board telemetry on non-NVIDIA systems remains blank/null and must not create GPU-idle or GPU-clock correlation signals
 - AutoTune feedback excludes telemetry matches farther than 750 ms from a stutter event; verify stale-match counts in its report
 - AutoTune feedback never changes game settings automatically
 

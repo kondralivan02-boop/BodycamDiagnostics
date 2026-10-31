@@ -26,8 +26,8 @@ Native Windows x64 utility for repeatable Bodycam DLSS / Frame Generation diagno
 - FFmpeg Desktop Duplication recording with NVIDIA NVENC, split into 15-second MKV chunks.
 - Preflight checks for PresentMon, FFmpeg, trusted SHA-256 values from `runtime-tools.sha256`, `h264_nvenc`, and `ddagrab`.
 - Process/system CPU and RAM telemetry to `telemetry.csv`, including the busiest observed process thread.
-- Per-process GPU 3D-engine utilization via Windows PDH GPU Engine counters (vendor-neutral when the WDDM driver exposes them); NVIDIA NVML additionally supplies board utilization, VRAM, temperature, clocks and power.
-- GPU Engine values are the maximum utilization among this process's 3D engine instances, not a sum and not a whole-GPU utilization figure. Missing counters remain blank rather than being reported as zero.
+- Per-process GPU 3D-engine utilization via Windows PDH GPU Engine counters (vendor-neutral when the WDDM driver exposes them); NVIDIA NVML optionally supplies NVIDIA board utilization, VRAM, temperature, clocks and power.
+- GPU Engine values are the maximum utilization among this process's 3D engine instances, not a sum and not a whole-GPU utilization figure. Missing per-process counters remain blank rather than being reported as zero. NVML board telemetry is a separate optional source; on systems without NVML, its CSV/report fields remain blank/null and are not interpreted as zero load.
 - Automatic post-test metrics: average FPS, 1% low, 0.1% low, frametime percentiles and stutter counters.
 - F9 AutoTune feedback correlates repeated >=100 ms stutters with per-process GPU 3D-engine and maximum single-thread CPU load. It can identify a Performance-profile candidate or CPU/mixed pressure; it never changes game settings automatically. High/Medium/Low are coverage-and-repetition tiers, not statistical probabilities or FPS predictions. Telemetry samples more than 750 ms from an event are excluded from feedback classification (500 ms nominal sampling interval).
 - `summary.json` and `summary.txt` written at the end of each test.
