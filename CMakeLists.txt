@@ -39,6 +39,7 @@ add_executable(BodycamDiagnostics WIN32
     src/ToolPreflight.cpp
     src/TelemetrySampler.cpp
     src/AutoTuneFeedback.cpp
+    src/AutoTuneFeedbackAnalysis.cpp
     src/MetricsCalculator.cpp
     src/FrameContinuity.cpp
     src/ReportPackager.cpp
@@ -134,7 +135,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    add_executable(AutoTuneFeedbackTests tests/AutoTuneFeedbackTests.cpp src/AutoTuneFeedback.cpp)
+    add_executable(AutoTuneFeedbackTests tests/AutoTuneFeedbackTests.cpp src/AutoTuneFeedbackAnalysis.cpp)
     target_include_directories(AutoTuneFeedbackTests PRIVATE src)
     add_test(NAME AutoTuneFeedbackTests COMMAND AutoTuneFeedbackTests)
     if(MSVC)

@@ -49,7 +49,12 @@ int main() {
 
     StutterCorrelationResult sparse;
     sparse.valid = true;
-    sparse.events = {makeEvent(true, false), makeEvent(true, false), makeEvent(false, false)};
+    auto noTelemetry = makeEvent(false, false);
+    noTelemetry.telemetryMatched = false;
+    noTelemetry.processGpu3dValid = false;
+    noTelemetry.processMaxThreadCpuValid = false;
+    sparse.events = {makeEvent(true, false), makeEvent(true, false),
+                     noTelemetry, noTelemetry, noTelemetry};
     check(analyzeAutoTuneFeedback(sparse).kind == AutoTuneFeedbackKind::Inconclusive,
           "sparse telemetry matching must not trigger a profile recommendation");
 
