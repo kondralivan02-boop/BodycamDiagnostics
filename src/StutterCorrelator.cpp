@@ -606,7 +606,8 @@ void classifySignals(StutterEvent& event) {
     if (!event.telemetryMatched)
         return;
 
-    if (frame >= 250.0 && event.gpuUtilPct <= 15.0)
+    if (event.gpuBoardTelemetryValid &&
+        frame >= 250.0 && event.gpuUtilPct <= 15.0)
         event.signals.push_back("GPU_UTIL_LOW_NEAR_STALL");
 
     if (event.systemCpuPct >= 90.0)
